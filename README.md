@@ -48,15 +48,17 @@ SEARCHAPI_API_KEY=ваш_ключ
 # Опционально для поиска в VK
 VK_TOKEN=ваш_токен_vk
 
-# Для AI (опционально)
-LM_STUDIO_URL=http://localhost:1234/v1
+# Для Groq AI (опционально, бесплатный)
+GROQ_API_KEY=ваш_ключ_groq
 ```
 
 ### Где взять ключи
 
 - **SearchApi.io**: https://www.searchapi.io/ (нужен для поиска сайтов компаний)
 - **VK Token**: https://vkhost.github.io/ (для поиска групп/контактов в VK)
-- **LM Studio**: https://lmstudio.ai/ (для локального AI без облачных API)
+- **Groq API**: https://console.groq.com/ (бесплатный тир)
+- **LM Studio**: https://lmstudio.ai/ (для локального AI)
+- **UncloseAI**: нужен VPN, без ключей
 
 ## Как использовать
 
@@ -76,9 +78,32 @@ LM_STUDIO_URL=http://localhost:1234/v1
 ├── enricher.py         # Парсинг и обогащение
 ├── search_providers.py # Поиск через SearchApi
 ├── lm_studio_client.py # AI-клиент (LM Studio)
+├── groq_client.py      # AI-клиент (Groq)
+├── unclose_client.py   # AI-клиент (UncloseAI)
 ├── start.bat           # Запуск (Windows)
 └── requirements.txt    # Зависимости
 ```
+
+## AI Провайдеры
+
+Программа поддерживает 3 AI провайдера для поиска ЛПР:
+
+| Провайдер | Модели | Требования |
+|-----------|--------|------------|
+| **LM Studio** | локальные | Установить приложение |
+| **Groq** | Llama 3.1, DeepSeek R1 | Бесплатный ключ с console.groq.com |
+| **UncloseAI** | Hermes, Qwen | Без ключей (нужен VPN) |
+
+---
+
+## ⚠️ Важно
+
+**Пользуйтесь этими услугами на свой страх и риск.**
+
+- Всё, что вы вводите (подсказки, файлы, личные данные), может быть залогировано
+- Не отправляйте чувствительную информацию
+- Бесплатные сервисы могут исчезнуть или изменить условия без предупреждения
+- Не используйте для production-проектов
 
 ## Лицензия
 
