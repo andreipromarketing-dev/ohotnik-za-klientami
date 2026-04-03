@@ -4,18 +4,18 @@ AI Integration для UncloseAI - бесплатный OpenAI-совместим
 import json
 import aiohttp
 
-UNCLOSE_URL = "https://uncloseai.com/v1"
+# Эндпоинты с сайта (без ключей)
+HERMES_URL = "https://hermes.ai.unturf.com/v1"
+QWEN_URL = "https://qwen.ai.unturf.com/v1"
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-72B-Instruct"
+DEFAULT_MODEL = "hermes-3-llama-3.1-405b"
 
 MODELS = {
-    "Qwen/Qwen2.5-72B-Instruct": "Qwen 2.5 72B (базовый)",
+    "hermes-3-llama-3.1-405b": "Hermes 3 Llama 3.1 405B",
+    "hermes-3-llama-3.1-70b": "Hermes 3 Llama 3.1 70B",
+    "Qwen/Qwen2.5-72B-Instruct": "Qwen 2.5 72B (код)",
     "Qwen/Qwen2.5-32B-Instruct": "Qwen 2.5 32B",
-    "Qwen/Qwen2.5-Coder-32B-Instruct": "Qwen Coder 32B (код)",
-    "Qwen/Qwen2.5-14B-Instruct": "Qwen 2.5 14B",
-    "OpenChat/OpenChat-7B": "OpenChat 7B",
-    "microsoft/Phi-4-mini-instruct": "Phi-4 Mini",
-    "cognitivecomputations/dolphin-mixtral-8x7b": "Dolphin Mixtral",
+    "Qwen/Qwen2.5-Coder-32B-Instruct": "Qwen Coder 32B",
 }
 
 EXTRACT_CONTACTS_PROMPT = """Найди контактные данные компании.
@@ -28,6 +28,12 @@ JSON:
 
 async def call_unclose(system_prompt: str, user_message: str, model: str = DEFAULT_MODEL) -> dict:
     """Запрос к UncloseAI API (OpenAI-совместимый, без ключей)"""
+    
+    # Выбираем эндпоинт в зависимости от модели
+    if model.startswith("Qwen"):
+        base_url = QWEN_URL
+    else:
+        base_url = HERMES_URL
     
     payload = {
         "model": model,
@@ -42,7 +48,7 @@ async def call_unclose(system_prompt: str, user_message: str, model: str = DEFAU
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{UNCLOSE_URL}/chat/completions",
+                f"{base_url}/chat/completions",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=120)
             ) as resp:
@@ -96,7 +102,7 @@ def check_unclose() -> bool:
     """Проверяет доступность UncloseAI API"""
     try:
         import requests
-        resp = requests.get(f"{UNCLOSE_URL}/models", timeout=10)
+        resp = requests.get(f"{HERMES_URL}/models", timeout=10)
         return resp.status_code == 200
     except:
         return False
