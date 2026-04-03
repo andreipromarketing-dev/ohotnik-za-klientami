@@ -6,11 +6,21 @@ import config
 from playwright.async_api import async_playwright
 
 try:
-    from lm_studio_client import analyze_page_with_ai as ai_analyze, check_lm_studio as check_ai
+    from lm_studio_client import analyze_page_with_ai as ai_analyze_lm, check_lm_studio as check_ai_lm, get_available_models as get_lm_models
+    from groq_client import analyze_page_with_ai as ai_analyze_groq, check_groq as check_ai_groq, get_available_models as get_groq_models
+    from unclose_client import analyze_page_with_ai as ai_analyze_unclose, check_unclose as check_ai_unclose, get_available_models as get_unclose_models
     AI_AVAILABLE = True
 except ImportError:
     AI_AVAILABLE = False
-    check_ai = lambda: False
+    check_ai_lm = lambda: False
+    check_ai_groq = lambda: False
+    check_ai_unclose = lambda: False
+    ai_analyze_lm = None
+    ai_analyze_groq = None
+    ai_analyze_unclose = None
+    get_lm_models = lambda: []
+    get_groq_models = lambda: {}
+    get_unclose_models = lambda: {}
 
 EMAIL_REGEX = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
 PHONE_REGEX = r'(?:\+7|8|7)[\s\-]?\(?\d{3,5}\)?[\s\-]?\d{1,3}[\s\-]?\d{2}[\s\-]?\d{2}'
@@ -63,7 +73,7 @@ async def quick_check_lpr(url, log_func=None):
         pass
     return False
 
-async def enrich_site_data(browser, url, company_name=None, log_func=None, use_ai=False):
+async def enrich_site_data(browser, url, company_name=None, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model=""):
     """Парсит сайт - извлекает контакты и соцсети"""
     res = {
         'site': url or '—',
@@ -134,9 +144,20 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         max_links = re.findall(r'max\.ru', html)
         if max_links: res['MAX'] = f"https://{max_links[0]}"
 
-        if use_ai and AI_AVAILABLE and check_ai():
-            if log_func: log_func(f"🤖 AI...")
-            ai_result = await ai_analyze(text, company_name)
+        if use_ai and AI_AVAILABLE:
+            use_lm = ai_provider == "LM Studio" and check_ai_lm()
+            use_groq = ai_provider == "Groq" and check_ai_groq()
+            use_unclose = ai_provider == "UncloseAI" and check_ai_unclose()
+            
+            if (use_lm or use_groq or use_unclose):
+                if log_func: log_func(f"🤖 AI ({ai_provider})...")
+                
+                if use_lm:
+                    ai_result = await ai_analyze_lm(text, company_name, ai_model)
+                elif use_groq:
+                    ai_result = await ai_analyze_groq(text, company_name, ai_model)
+                else:
+                    ai_result = await ai_analyze_unclose(text, company_name, ai_model)
             
             if ai_result.get('ai_success'):
                 ai_people = ai_result.get('ai_people', [])
@@ -177,7 +198,7 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
     return res
 
 
-async def batch_process(items_list, log_func=None, use_ai=False):
+async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model=""):
     """Параллельный парсинг сайтов"""
     semaphore = asyncio.Semaphore(7)
     async with async_playwright() as p:
@@ -186,7 +207,7 @@ async def batch_process(items_list, log_func=None, use_ai=False):
         async def sem_enrich(item):
             async with semaphore:
                 site = (item.get('websites') or [None])[0]
-                res = await enrich_site_data(browser, site, item.get('name'), log_func=log_func, use_ai=use_ai)
+                res = await enrich_site_data(browser, site, item.get('name'), log_func=log_func, use_ai=use_ai, ai_provider=ai_provider, ai_model=ai_model)
                 
                 emails = res.get('emails', [])
                 return {

@@ -88,13 +88,63 @@ for name, key in api_status.items():
         st.sidebar.warning(f"❌ {name}: Не настроен")
 
 try:
-    from lm_studio_client import check_lm_studio
+    from lm_studio_client import check_lm_studio, get_available_models as get_lm_models
+    from groq_client import check_groq, get_available_models as get_groq_models
+    from unclose_client import check_unclose, get_available_models as get_unclose_models
+    
     if check_lm_studio():
         st.sidebar.success("✅ LM-Studio: Подключен")
-    else:
-        st.sidebar.warning("⚠️ LM-Studio: Недоступен (AI-анализ выключен)")
+    if check_groq():
+        st.sidebar.success("✅ Groq: Подключен")
+    if check_unclose():
+        st.sidebar.success("✅ UncloseAI: Подключен")
 except:
-    st.sidebar.warning("⚠️ LM-Studio: Не настроен")
+    st.sidebar.warning("⚠️ AI: Не настроен")
+
+# Выбор AI провайдера и модели
+st.header("AI Настройки")
+ai_col1, ai_col2 = st.columns(2)
+
+with ai_col1:
+    ai_provider = st.radio(
+        "Провайдер AI:",
+        ["LM Studio", "Groq", "UncloseAI"],
+        horizontal=True,
+        help="LM Studio - локальный, Groq/UncloseAI - облачные (бесплатные)"
+    )
+
+with ai_col2:
+    if ai_provider == "LM Studio":
+        lm_models = get_lm_models()
+        if lm_models:
+            ai_model = st.selectbox("Модель:", lm_models, help="Выберите модель из LM Studio")
+        else:
+            ai_model = st.selectbox("Модель:", ["Модели не найдены"], disabled=True)
+    elif ai_provider == "Groq":
+        groq_models = get_groq_models()
+        model_options = [(k, v) for k, v in groq_models.items()]
+        model_labels = [f"{v} ({k})" for k, v in groq_models.items()]
+        selected_idx = st.selectbox(
+            "Модель:",
+            range(len(model_labels)),
+            format_func=lambda i: model_labels[i]
+        )
+        ai_model = model_options[selected_idx][0]
+        st.caption("Лимит: 30 req/min, 40k токенов/мин")
+    else:  # UncloseAI
+        unclose_models = get_unclose_models()
+        model_options = [(k, v) for k, v in unclose_models.items()]
+        model_labels = [f"{v} ({k})" for k, v in unclose_models.items()]
+        selected_idx = st.selectbox(
+            "Модель:",
+            range(len(model_labels)),
+            format_func=lambda i: model_labels[i]
+        )
+        ai_model = model_options[selected_idx][0]
+        st.caption("Безлимит, не требует API ключа")
+
+st.session_state.ai_provider = ai_provider
+st.session_state.ai_model = ai_model
 
 # Блок выбора аудитории
 st.header("1. Настройка поиска")
@@ -174,7 +224,7 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type="secondary", disable
     st.session_state.stop_requested = False
     total = len(st.session_state.raw_items)
     log_message(f"🎯 Парсинг {total} компаний...")
-    log_message(f"🤖 AI-поиск ЛПР: ВКЛ")
+    log_message(f"🤖 AI: {st.session_state.ai_provider} ({st.session_state.ai_model})")
     
     progress_bar = st.progress(0)
     stats_placeholder = st.empty()
@@ -187,7 +237,13 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type="secondary", disable
     
     async def run_enrichment():
         count = 0
-        async for result in enricher.batch_process(st.session_state.raw_items, log_func=log_message, use_ai=True):
+        async for result in enricher.batch_process(
+            st.session_state.raw_items, 
+            log_func=log_message, 
+            use_ai=True,
+            ai_provider=st.session_state.ai_provider,
+            ai_model=st.session_state.ai_model
+        ):
             if st.session_state.stop_requested: break
             
             count += 1
