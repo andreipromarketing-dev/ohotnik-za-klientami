@@ -1,20 +1,86 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Охотник за клиентами — CRM с AI-обогащением
 
-# Run and deploy your AI Studio app
+Парсер контрагентов с автоматическим обогащением данных через локальный ИИ или облачные API.
 
-This contains everything you need to run your app locally.
+## Возможности
 
-View your app in AI Studio: https://ai.studio/apps/d3a21a9f-431a-4577-a32d-587cb1c0e5c5
+- **Поиск компаний** — парсинг баз контрагентов (Excel/CSV) с автоматическим поиском дополнительной информации
+- **Обогащение данных** — получение контактов, адресов, телефонов, email черезSearchApi.io и VK API
+- **AI-анализ** — автоматическое определение типа бизнеса, категории товаров/услуг через локальный LLM (LM Studio, Ollama) или Gemini API
+- **UI на базе Streamlit** — удобный веб-интерфейс для работы с данными
 
-## Run Locally
+## Быстрый старт
 
-**Prerequisites:**  Node.js
+### Windows
 
+```batch
+start.bat
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Откроется интерфейс в браузере по адресу `http://localhost:8501`.
+
+### Linux/Mac
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+## Требования
+
+- Python 3.10+
+- (опционально) LM Studio или Ollama для локального LLM
+
+## Установка зависимостей
+
+```bash
+pip install -r requirements.txt
+```
+
+## Настройка
+
+Скопируйте `.env.example` в `.env` и заполните ключи:
+
+```env
+# API для поиска (SearchApi.io)
+SEARCHAPI_API_KEY=ваш_ключ
+
+# VK API для поиска контактов
+VK_TOKEN=ваш_токен
+
+# Локальный LLM (опционально)
+LM_STUDIO_URL=http://localhost:1234/v1
+OLLAMA_URL=http://localhost:11434
+```
+
+### Использование локального LLM
+
+Для работы без облачных API установите [LM Studio](https://lmstudio.ai/) или [Ollama](https://ollama.com/) и загрузите модель (например, llama-3.2). После запуска LM Studio API будет доступен на `http://localhost:1234/v1`.
+
+## Структура проекта
+
+```
+├── app.py              # Основное приложение Streamlit
+├── config.py           # Конфигурация и настройки
+├── enricher.py         # Модуль обогащения данных
+├── search_providers.py # Поисковые провайдеры
+├── lm_studio_client.py # Клиент для LM Studio
+├── omniroute_client.py # Клиент для OmniRoute (альтернатива)
+├── start.bat           # Запуск (Windows)
+├── start.sh            # Запуск (Linux/Mac)
+└── requirements.txt    # Зависимости Python
+```
+
+## Использование
+
+1. Запустите `start.bat`
+2. Загрузите Excel/CSV файл с контрагентами
+3. Нажмите "Обогатить данные" — программа автоматически:
+   - Найдёт дополнительную информацию о компаниях
+   - Определит категорию бизнеса через ИИ
+   - Добавит контакты и адреса
+4. Скачайте результат в Excel
+
+## Лицензия
+
+MIT
