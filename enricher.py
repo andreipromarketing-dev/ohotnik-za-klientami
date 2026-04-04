@@ -149,6 +149,7 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
             use_groq = ai_provider == "Groq" and check_ai_groq()
             use_unclose = ai_provider == "UncloseAI" and check_ai_unclose()
             
+            ai_result = None
             if (use_lm or use_groq or use_unclose):
                 if log_func: log_func(f"🤖 AI ({ai_provider})...")
                 
@@ -159,7 +160,7 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
                 else:
                     ai_result = await ai_analyze_unclose(text, company_name, ai_model)
             
-            if ai_result.get('ai_success'):
+            if ai_result and ai_result.get('ai_success'):
                 ai_people = ai_result.get('ai_people', [])
                 if ai_people:
                     owners = [p for p in ai_people if p.get('type') in ['owner', 'director']]
