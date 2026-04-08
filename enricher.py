@@ -45,7 +45,7 @@ async def search_website(company_name, log_func=None):
             organic = data.get("organic_results", [])
             for result in organic[:3]:
                 link = result.get("link", "")
-                if link and not any(x in link for x in ["youtube", "vk.com", "facebook", "instagram", "tilda"]):
+                if link and not any(x in link for x in ["youtube", "facebook", "instagram", "tilda"]):
                     return link
     except:
         pass

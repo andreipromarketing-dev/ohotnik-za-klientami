@@ -17,7 +17,7 @@ def search_ddg_lite(query):
         
         # Парсим ссылки вида href="http..."
         links = re.findall(r'href="(https?://[^"]+)"', html)
-        results = [l for l in links if not any(x in l for x in ['duckduckgo', 'yandex', 'bing', 'vk.com'])]
+        results = [l for l in links if not any(x in l for x in ['duckduckgo', 'yandex', 'bing'])]
         
         print(f"Найдено релевантных ссылок: {len(results)}")
         for res in results[:3]:

@@ -23,6 +23,16 @@ AGGREGATORS_BLOCKLIST = [
     "sberbank.ru", "tinkoff.ru",
     "zoon.ru", "visitsimferopol.ru", "spark-interfax.ru", "saby.ru",
     "vk.com/wall-",
+    "cian.ru", "avito.ru", "youla.ru",
+    "rusprofile.ru", "orgpage.ru", "rabotniki.ua", "remontexpress.ru",
+    "stroikaspb.com", "drom.ru", "auto.ru", "irr.ru",
+    "xn--p1ai", "xn--p1acf",
+    "spravker.ru", "etagi.com", "cataloxy.ru", "kronvest.net",
+    "365rem.ru", "proff-remont.ru", "ruscatalog.org", "novograddom.ru",
+    "dom-pod-klych.ru", "buildsim.ru", "list-org.com", "domclick.ru",
+    "bizly.ru", "2rus.org", "kudanamore.ru", "travelandia.ru",
+    "domik.travel", "hotel.tutu.ru", "tropki.ru", "mirturbaz.ru",
+    "vkrim.info", "companies.rbc.ru", "privettur.ru",
 ]
 
 def is_aggregator(url, title=""):
@@ -34,13 +44,37 @@ def is_aggregator(url, title=""):
         if agg in url_lower or agg in title_lower:
             return True
     
+    if "xn--" in url_lower and ".ru" in url_lower:
+        return True
+    
+    # Проверка глубины URL - слишком много сегментов = каталог/агрегатор
+    path = url_lower.split("//")[-1] if "//" in url_lower else url_lower
+    segments = path.split("/")
+    # Если больше 4 сегментов - скорее всего каталог объектов
+    if len([s for s in segments if s]) > 4:
+        return True
+    
+    # Каталоговые пути агрегаторов
     catalog_path_patterns = [
         "/city/", "/hotels/", "/tourism", "/oteli-", "/gostinitsy", "/gostinitsi", 
         "/firmi", "/medical/", "/holiday_house/", "/type/", "/category/", 
-        "/business/", "/catalog/", "/spravka/", "/dost/", "/uslug"
+        "/business/", "/catalog/", "/spravka/", "/dost/", "/uslug",
+        "/novostrojki/", "/zhk-", "/newobject/", "/complex/", "/zastrojshhik/",
+        "/ объектов", "/объект/", "/service/", "/каталог", "/catalog/",
+        "/contact-us", "/contacts", "/about", "/produktsiya",
     ]
     for pattern in catalog_path_patterns:
         if pattern in url_lower:
+            return True
+    
+    # Паттерны агрегаторов в URL (id объекта, код города и т.д.)
+    aggregator_patterns = [
+        r'/\d{4,}',  # много цифр подряд (id объектов)
+        r'/id\d+',   # id в URL
+        r'/club\d+', # vk club id
+    ]
+    for pattern in aggregator_patterns:
+        if re.search(pattern, url_lower):
             return True
     
     has_number = any(c.isdigit() for c in title[:10])
