@@ -298,4 +298,4 @@ with st.expander("📝 Технический лог"):
 
 # Footer
 st.markdown("---")
-st.markdown(f"**ЮгСпецСети | Охотник v3.0** | {config.AGENCY_CONTACT}")
+st.markdown("**ЮгСпецСети | Охотник v3.0** | югспецсети.рф | t.me/Concreator")
