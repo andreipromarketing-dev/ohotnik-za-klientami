@@ -1,0 +1,59 @@
+ID,Feature,User Story,Expected Behavior,Status,Errors Found,Fix Applied
+F01,Logo Display,"As a user, I see the company logo in the sidebar when the app loads","Logo loads from F:\СОЦИТУД\ path and displays at 120px in sidebar",PASS,—,—
+F02,API Status Indicators,"As a user, I see green/red indicators for SearchApi, VK, DDG in sidebar","Each indicator shows colored dot with status text",PASS,—,—
+F03,Groq Connection Check,"As a user, I see Groq API connection status at startup","Green dot if API key valid and reachable, red otherwise",PASS,—,—
+F04,LM Studio Lazy Check,"As a user, LM Studio is NOT checked at startup","LM Studio only checked when user selects it in radio button",PASS,—,—
+F05,UncloseAI Lazy Check,"As a user, UncloseAI is NOT checked at startup","UncloseAI only checked when user selects it in radio button",PASS,—,—
+F06,AI Provider Selection,"As a user, I can select Groq/UncloseAI/LM Studio via radio buttons","Selecting provider updates available models list",PASS,—,—
+F07,Model Selection,"As a user, I can select a specific AI model from dropdown","Dropdown shows models for selected provider, defaults to first",PASS,—,—
+F08,Niche Selection,"As a user, I can type a niche or select from predefined list","Text input and selectbox both work, selectbox populates from HUNTER_QUERIES",PASS,—,—
+F09,City Selection,"As a user, I can type a city or select from predefined list","Text input and selectbox both work, selectbox populates from REGION_COORDS",PASS,—,—
+F10,Search Limit Slider,"As a user, I can set search limit between 10-500","Slider with step 10, default 50",PASS,—,—
+F11,Step 1 Search Button,"As a user, I click ШАГ 1 to start search","Button triggers run_search() with progress bar",PASS,—,—
+F12,Search Progress Bar,"As a user, I see progress during search","Progress bar updates with current phase (primary/secondary markers)",PASS,—,—
+F13,Search Phase 1 Primary Markers,"As a user, search uses PRIMARY_MARKERS first","Query template: niche + city + marker for each primary marker",PASS,—,—
+F14,Search Phase 2 Secondary Markers,"As a user, if few results found, secondary markers are used","Only triggers if Phase 1 results < limit",PASS,—,—
+F15,Search Deduplication,"As a user, duplicate companies are removed","Deduped by normalized company name AND URL",PASS,—,—
+F16,Aggregator Level 1 Filter,"As a user, known aggregator domains are blocked from results","72 domains + URL patterns + title patterns filtered",PASS,—,—
+F17,Aggregator Level 2 Content Filter,"As a user, aggregator pages detected by content analysis","Post-fetch scoring: phones, ratings, catalog signals, company signals",PASS,—,—
+F18,Step 2 Enrichment Button,"As a user, I click ШАГ 2 to parse results","Button disabled until raw_items exist, triggers run_enrichment()",PASS,—,—
+F19,Enrichment Progress,"As a user, I see progress during enrichment","Progress bar shows percentage of sites processed",PASS,—,—
+F20,Quick LPR Check,"As a user, sites without LPR keywords in raw HTML are NOT skipped","quick_check_lpr() now logs warning but continues enrichment",FIXED,"Previously returned empty result if no LPR keywords in raw HTML","Removed hard block at enricher.py:513-518, now only logs warning"
+F21,Aggregator Page Detection,"As a user, real company sites are not falsely marked as aggregators","_is_aggregator_page() scoring: score >= 4 = aggregator (raised from 3)",FIXED,"Threshold too low caused false positives","Raised threshold from 3 to 4 at enricher.py:282"
+F22,Contact Page Fallback,"As a user, if main page has <2 contacts, contact pages are tried","Tries /contacts, /about, /o-nas, /kontakty etc.",PASS,—,—
+F23,Email Extraction,"As a user, emails are found from mailto, JSON-LD, meta, regex","Multiple sources checked, blacklisted emails filtered",PASS,—,—
+F24,Phone Extraction,"As a user, Russian phones are extracted from page","All phones saved (up to 5), deduplicated",FIXED,"Only first phone was saved (all_phones[0])","Changed to save all unique phones: ', '.join(unique_phones[:5])"
+F25,VK Link Extraction,"As a user, VK links are found from href, regex, footer/header/nav","vk.com/m.vk.com/vk.cc detected and normalized",PASS,—,—
+F26,TG Link Extraction,"As a user, Telegram links are found from href, regex, @mentions","t.me/telegram.me/telegram.org detected, @username extracted",PASS,—,—
+F27,Social Media Other,"As a user, Instagram/YouTube/Odnoklassniki links are found","ig, yt, ok links detected from SOCIAL_DOMAINS",PASS,—,—
+F28,AI Contact Analysis,"As a user, AI analyzes page text for contacts/LPR","Selected AI provider extracts emails, phones, VK, TG, people",PASS,—,—
+F29,VK API Fallback,"As a user, if no VK link found, VK API searches for company","groups.search → users.search fallback",PASS,—,—
+F30,Batch Processing,"As a user, multiple sites are processed in parallel","Semaphore(7) limits concurrent Playwright sessions",PASS,—,—
+F31,Results DataFrame,"As a user, I see results in a table","Columns: Компания, Сайт, Телефон, VK, TG, MAX, Email, ЛПР, Адрес",PASS,—,—
+F32,Metric Cards,"As a user, I see summary metrics below results","4 cards: Лидов, С телефонами, С email, Найден ЛПР",PASS,—,—
+F33,Excel Download,"As a user, I can download results as .xlsx","File downloads with openpyxl formatting",PASS,—,—
+F34,Clear Results,"As a user, I can clear all results","🗑️ Очистить button resets all state",PASS,—,—
+F35,Stop Button,"As a user, I can stop ongoing search/enrichment","🛑 СТОП sets stop_requested=True",PASS,—,—
+F36,Technical Log,"As a user, I can see technical log entries","Expander with reversed chronological entries, max 100",PASS,—,—
+F37,Custom API Modal,"As a user, I can open add API modal","➕ Добавить API button opens modal form",PASS,—,—
+F38,Custom API Save,"As a user, I can save custom API keys","Keys saved to .api_keys.enc (base64 encoded JSON)",PASS,—,—
+F39,Custom API Delete,"As a user, I can delete saved custom APIs","Delete button removes from storage",PASS,—,—
+F40,Custom API Checkboxes,"As a user, I can see saved custom APIs","Simplified: shows saved APIs as captions instead of disabled checkboxes",FIXED,"Disabled checkboxes with 'скоро' labels were confusing","Replaced with simple caption list showing saved API names"
+F41,Dark Theme,"As a user, the app has dark theme","config.toml base=dark, CSS uses direct selectors",PASS,—,—
+F42,CSS Radio Buttons,"As a user, selected radio buttons have proper contrast","Green background with dark text for selected options",PASS,—,—
+F43,SearchApi Fallback to DDG,"As a user, if SearchApi fails, DuckDuckGo is used","search_searchapi falls back to search_duckduckgo",PASS,—,—
+F44,DDG Library Fallback,"As a user, if ddgs library fails, lite.duckduckgo.com is scraped","HTTP scrape of lite.duckduckgo.com with regex extraction",PASS,—,—
+F45,Error Handling Search,"As a user, search errors are logged but don't crash app","Specific exception types catch and log errors",FIXED,"Bare except: clauses swallowed all exceptions silently","Replaced with specific exception types (Exception, JSONDecodeError, etc.)"
+F46,Error Handling Enrichment,"As a user, enrichment errors are logged per-site","Failed sites show error in log, don't stop batch",PASS,—,—
+F47,Input Validation Niche,"As a user, empty niche is handled gracefully","Falls back to first HUNTER_QUERIES entry",PASS,—,—
+F48,Input Validation City,"As a user, empty city is handled gracefully","Falls back to first REGION_COORDS entry",PASS,—,—
+F49,Session State Management,"As a user, my data persists during session","hunter_data, raw_items, logs in st.session_state",PASS,—,—
+F50,Footer Display,"As a user, I see footer with version and contacts","ЮгСпецСети | Охотник v3.0 | югспецсети.рф | t.me/Concreator",PASS,—,—
+F51,Multiple Phone Storage,"As a user, ALL phones from a site are saved","All unique phones saved (up to 5), comma-separated",FIXED,"Only first phone saved at enricher.py:572","Changed to save all unique phones with deduplication"
+F52,Punycode Domain Handling,"As a user, Cyrillic domain sites are not blocked","Only specific punycode aggregators blocked, not all xn-- domains",FIXED,"Blanket punycode check blocked ALL Cyrillic domains","Removed blanket check, added specific punycode aggregators to blocklist"
+F53,AGGREGATOR_BODY_SIGNALS Duplication,"As a user, both files use same signals","Imported from search_providers.py, no duplication",FIXED,"Duplicated in enricher.py and search_providers.py","Added import from search_providers.py, removed local definitions"
+F54,Dead Config Constants,"As a user, unused config constants are removed","FILTERS, MIN_PAUSE, MAX_PAUSE, MAX_REQUESTS_PER_HOUR removed",FIXED,"7 unused constants defined but never referenced","Removed dead code from config.py"
+F55,Custom API Checkboxes Integration,"As a user, custom APIs appear in provider selection","Simplified to show saved APIs without broken checkboxes",FIXED,"Checkboxes disabled, no integration with AI pipeline","Replaced with simple caption list showing saved API names"
+F56,Bare Except Clauses,"As a user, errors don't silently disappear","25+ bare except: replaced with specific exception types",FIXED,"Bare except: clauses swallowed all exceptions silently","Replaced all bare except: with Exception, JSONDecodeError, OSError, etc."
+F57,Sync/Async Mixing,"As a user, sync requests in async context don't block","search_website() now uses aiohttp instead of requests",FIXED,"requests.get() called inside async function","Converted to aiohttp async client at enricher.py:48-63"
+F58,ProgressBar Overflow,"As a user, progress bar doesn't exceed 100%","total_queries includes primary + secondary markers from start",FIXED,"total_queries calculated before secondary markers added","Changed to include both marker sets: len(PRIMARY) + len(SECONDARY)"

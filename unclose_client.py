@@ -18,18 +18,40 @@ MODELS = {
     "Qwen/Qwen2.5-Coder-32B-Instruct": "Qwen Coder 32B",
 }
 
-EXTRACT_CONTACTS_PROMPT = """Найди контактные данные компании.
+EXTRACT_CONTACTS_PROMPT = """Извлеки ВСЕ контактные данные компании из текста страницы.
 
-JSON:
-{"emails": [], "people": [{"name": "Имя", "position": "должность", "type": "owner|director"}]}
+Формат JSON:
+{
+  "emails": ["admin@company.ru", "info@company.ru"],
+  "phones": ["+7 978 123-45-67", "8 800 100-00-00"],
+  "vk": "vk.com/username или vk.com/id123456",
+  "telegram": "username (без @)",
+  "people": [
+    {"name": "Имя Фамилия", "position": "должность", "type": "owner|director|founder|manager"}
+  ]
+}
 
-Только реальные данные. Не выдумывай."""
+ПРАВИЛА:
+- Извлекай ТОЛЬКО реальные данные, которые ЯВНО присутствуют в тексте
+- НЕ выдумывай и НЕ дополняй недостающие данные
+- Email: ищи в тексте, в Schema.org разметке, в href=mailto:
+- Телефоны: любой формат (+7, 8, цифры с тире/пробелами/скобками)
+- VK: vk.com/username, m.vk.com/username, @username
+- Telegram: t.me/username, @username (брось @ при записи)
+- Люди: директор, гендиректор, учредитель, владелец, founder, CEO, управляющий
+- Если данных нет — возвращай пустые массивы {}
+
+Примеры:
+- "info@salon.ru" → emails: ["info@salon.ru"]
+- "тел: 8 978 123-45-67" → phones: ["89781234567"]
+- "vk.com/durov" → vk: "vk.com/durov"
+- "Наш TG: @mycompany" → telegram: "mycompany"
+- "Директор: Иванова М.И." → people: [{"name": "Иванова", "position": "директор", "type": "director"}]"""
 
 
 async def call_unclose(system_prompt: str, user_message: str, model: str = DEFAULT_MODEL) -> dict:
     """Запрос к UncloseAI API (OpenAI-совместимый, без ключей)"""
     
-    # Выбираем эндпоинт в зависимости от модели
     if model.startswith("Qwen"):
         base_url = QWEN_URL
     else:
@@ -41,7 +63,7 @@ async def call_unclose(system_prompt: str, user_message: str, model: str = DEFAU
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
         ],
-        "max_tokens": 500,
+        "max_tokens": 1000,
         "temperature": 0
     }
     
@@ -73,7 +95,7 @@ async def call_unclose(system_prompt: str, user_message: str, model: str = DEFAU
 async def analyze_page_with_ai(page_text: str, company_name: str = "", model: str = DEFAULT_MODEL) -> dict:
     """Анализирует текст страницы и извлекает контактную информацию через UncloseAI"""
     
-    user_message = f"Компания: {company_name}\n\nТекст страницы:\n{page_text[:5000]}"
+    user_message = f"Компания: {company_name}\n\nТекст страницы:\n{page_text[:10000]}"
     
     result = await call_unclose(EXTRACT_CONTACTS_PROMPT, user_message, model)
     
@@ -104,7 +126,7 @@ def check_unclose() -> bool:
         import requests
         resp = requests.get(f"{HERMES_URL}/models", timeout=10)
         return resp.status_code == 200
-    except:
+    except Exception:
         return False
 
 

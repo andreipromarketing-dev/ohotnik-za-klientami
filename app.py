@@ -14,7 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 API_STORE_FILE = Path(__file__).parent / ".api_keys.enc"
-LOGO_PATH = Path(r"E:\СОЦИТУД\AI-Эксперт\ЮгСпецСети\Фотошопное\Иконки\150.jpg")
+LOGO_PATH = Path(r"F:\СОЦИТУД\AI-Эксперт\ЮгСпецСети\Фотошопное\Иконки\150.jpg")
 
 def load_custom_apis():
     """Загружает кастомные API из файла"""
@@ -22,7 +22,7 @@ def load_custom_apis():
         try:
             decoded = base64.b64decode(API_STORE_FILE.read_text().encode())
             return json.loads(decoded.decode())
-        except:
+        except (json.JSONDecodeError, UnicodeDecodeError, FileNotFoundError):
             return {}
     return {}
 
@@ -43,239 +43,146 @@ def play_sound():
 st.set_page_config(page_title="ЮгСпецСети | Охотник за клиентами", page_icon="🎯", layout="wide")
 
 # ============================================================================
-# CSS С ДВУМЯ ТЕМАМИ: ТЁМНАЯ (#012F46) и СВЕТЛАЯ (#F8F9FA)
+# CSS — ТЁМНАЯ ТЕМА (#012F46)
 # ============================================================================
 
 st.markdown("""
-<script>
-window.addEventListener('DOMContentLoaded', function() {
-    // Функция определения темы по цвету фона
-    function detectTheme() {
-        const app = document.querySelector('.stApp');
-        if (!app) return 'dark';
-        
-        const bg = getComputedStyle(app).backgroundColor;
-        // Streamlit в тёмном режиме: rgb(1, 47, 70) или rgb(18, 46, 70)
-        // Streamlit в светлом режиме: rgb(248, 249, 250) или rgb(255, 255, 255)
-        if (bg.includes('1, 47, 70') || bg.includes('18, 46, 70') || bg.includes('2, 46, 70')) {
-            return 'dark';
-        }
-        return 'light';
-    }
-    
-    // Установка атрибута темы
-    function setThemeAttr() {
-        const theme = detectTheme();
-        document.querySelector('.stApp').setAttribute('data-theme', theme);
-    }
-    
-    // Ограничение ширины меню - привязка к toolbar справа
-    function fixMenuWidth() {
-        document.querySelectorAll('[data-baseweb="menu"], [role="menu"], [data-baseweb="popover"]').forEach(function(el) {
-            el.style.maxWidth = '220px';
-            el.style.minWidth = '180px';
-            el.style.width = 'auto';
-            el.style.position = 'absolute';
-            el.style.top = '100%';
-            el.style.left = 'auto';
-            el.style.right = '0';
-            el.style.transform = 'none';
-        });
-    }
-    
-    // Запускаем при загрузке
-    setTimeout(setThemeAttr, 300);
-    setInterval(setThemeAttr, 2000);
-    setTimeout(fixMenuWidth, 500);
-    
-    // Следим за кликами - исправляем меню при открытии
-    document.addEventListener('click', function(e) {
-        if (e.target.closest('[data-testid="stToolbar"]') || e.target.closest('button[aria-haspopup]')) {
-            setTimeout(fixMenuWidth, 50);
-            setTimeout(fixMenuWidth, 200);
-            setTimeout(fixMenuWidth, 500);
-        }
-    });
-    
-    // Следим за кликами на кнопках темы
-    const observer = new MutationObserver(setThemeAttr);
-    observer.observe(document.body, { attributes: true, childList: true, subtree: true });
-});
-</script>
-
 <style>
-/* ============================================================================
-[data-theme="dark"] - ТЁМНАЯ ТЕМА (#012F46)
-============================================================================ */
-.stApp[data-theme="dark"] {
+/* ТЁМНАЯ ТЕМА (#012F46) — прямые селекторы */
+.stApp {
     background: #012F46 !important;
 }
-.stApp[data-theme="dark"] * {
-    color: #ffffff !important;
-}
-
-/* Основной контент */
-.stApp[data-theme="dark"] .main {
+.main {
     background: #012F46 !important;
 }
-
-/* Sidebar */
-.stApp[data-theme="dark"] section[data-testid="stSidebar"] {
+section[data-testid="stSidebar"] {
     background: #013a5c !important;
 }
-.stApp[data-theme="dark"] section[data-testid="stSidebar"] * {
+section[data-testid="stSidebar"] * {
     color: #ffffff !important;
 }
-.stApp[data-theme="dark"] section[data-testid="stSidebar"] .stMarkdown {
+section[data-testid="stSidebar"] .stMarkdown {
     color: #b0c4d4 !important;
 }
-
-/* Кнопки ВСЕ */
-.stApp[data-theme="dark"] button,
-.stApp[data-theme="dark"] .stButton > button,
-.stApp[data-theme="dark"] [data-testid="stBaseButton-secondary"],
-.stApp[data-theme="dark"] [data-testid="stBaseButton-primary"],
-.stApp[data-theme="dark"] button p,
-.stApp[data-theme="dark"] button span {
+.stButton > button,
+[data-testid="stBaseButton-secondary"],
+[data-testid="stBaseButton-primary"] {
     color: #0D1117 !important;
     background: #E8F9EE !important;
     border: none !important;
 }
-.stApp[data-theme="dark"] button:hover,
-.stApp[data-theme="dark"] .stButton > button:hover {
+.stButton > button p,
+.stButton > button span {
+    color: #0D1117 !important;
+}
+.stButton > button:hover {
     background: #d4f4e3 !important;
 }
-
-/* Ввод текста (Inputs) */
-.stApp[data-theme="dark"] input,
-.stApp[data-theme="dark"] .stTextInput > div > div > input,
-.stApp[data-theme="dark"] textarea,
-.stApp[data-theme="dark"] .stTextArea > div > div > textarea {
+input,
+.stTextInput > div > div > input,
+textarea,
+.stTextArea > div > div > textarea {
     background: #024d82 !important;
     color: #ffffff !important;
     border: 1px solid #024d82 !important;
 }
-.stApp[data-theme="dark"] input::placeholder,
-.stApp[data-theme="dark"] textarea::placeholder {
+input::placeholder,
+textarea::placeholder {
     color: #b0c4d4 !important;
 }
-
-/* Select/Selectbox */
-.stApp[data-theme="dark"] .stSelectbox > div > div,
-.stApp[data-theme="dark"] [data-baseweb="select"] {
+.stSelectbox > div > div,
+[data-baseweb="select"] {
     background: #024d82 !important;
     color: #ffffff !important;
     border: 1px solid #024d82 !important;
 }
-.stApp[data-theme="dark"] [data-baseweb="select"] * {
+[data-baseweb="select"] * {
     color: #ffffff !important;
 }
-
-/* Radio buttons */
-.stApp[data-theme="dark"] .stRadio > div,
-.stApp[data-theme="dark"] [role="radiogroup"] {
+.stRadio > div,
+[role="radiogroup"] {
     color: #ffffff !important;
 }
-.stApp[data-theme="dark"] .stRadio div[role="radiogroup"] label:has(input:checked) {
+.stRadio div[role="radiogroup"] label:has(input:checked) {
     background: #E8F9EE !important;
     color: #0D1117 !important;
     border-radius: 4px;
 }
-.stApp[data-theme="dark"] .stRadio div[role="radiogroup"] label {
+.stRadio div[role="radiogroup"] label {
     color: #b0c4d4 !important;
 }
-
-/* Checkbox */
-.stApp[data-theme="dark"] .stCheckbox > label,
-.stApp[data-theme="dark"] [role="checkbox"] {
+.stCheckbox > label,
+[role="checkbox"] {
     color: #ffffff !important;
 }
-
-/* Expanders/Details */
-.stApp[data-theme="dark"] .streamlit-expander,
-.stApp[data-theme="dark"] details {
+.streamlit-expander,
+details {
     background: #013a5c !important;
     border: 1px solid #024d82 !important;
     border-radius: 4px;
 }
-.stApp[data-theme="dark"] .streamlit-expander summary,
-.stApp[data-theme="dark"] details summary {
+.streamlit-expander summary,
+details summary {
     color: #ffffff !important;
 }
-.stApp[data-theme="dark"] .streamlit-expander summary:hover,
-.stApp[data-theme="dark"] details summary:hover {
+.streamlit-expander summary:hover,
+details summary:hover {
     background: #024d82 !important;
 }
-
-/* Slider */
-.stApp[data-theme="dark"] .stSlider [role="slider"] {
+.stSlider [role="slider"] {
     background: #E8F9EE !important;
 }
-.stApp[data-theme="dark"] .stSlider .stMarkdown {
+.stSlider .stMarkdown {
     color: #b0c4d4 !important;
 }
-
-/* Progress bar */
-.stApp[data-theme="dark"] .stProgress > div > div {
+.stProgress > div > div {
     background: #E8F9EE !important;
 }
-.stApp[data-theme="dark"] .stProgress > div > div > div {
+.stProgress > div > div > div {
     background: #E8F9EE !important;
 }
-
-/* Spinner */
-.stApp[data-theme="dark"] .stSpinner > div {
+.stSpinner > div {
     border: 3px solid #013a5c !important;
     border-top: 3px solid #E8F9EE !important;
 }
-
-/* Metric */
-.stApp[data-theme="dark"] [data-testid="stMetricValue"] {
+[data-testid="stMetricValue"] {
     color: #E8F9EE !important;
 }
-.stApp[data-theme="dark"] [data-testid="stMetricLabel"] {
+[data-testid="stMetricLabel"] {
     color: #b0c4d4 !important;
 }
-
-/* Dataframe/Table */
-.stApp[data-theme="dark"] .stDataFrame,
-.stApp[data-theme="dark"] [data-testid="stDataFrame"] {
+.stDataFrame,
+[data-testid="stDataFrame"] {
     background: #013a5c !important;
 }
-.stApp[data-theme="dark"] .stDataFrame thead th,
-.stApp[data-theme="dark"] [data-testid="stDataFrame"] thead th {
+.stDataFrame thead th,
+[data-testid="stDataFrame"] thead th {
     background: #024d82 !important;
     color: #ffffff !important;
 }
-
-/* Download button */
-.stApp[data-theme="dark"] .stDownloadButton > button {
+.stDownloadButton > button {
     color: #0D1117 !important;
     background: #E8F9EE !important;
 }
-
-/* Streamlit Header/Toolbar menu (три точки) */
-.stApp[data-theme="dark"] [data-testid="stHeader"],
-.stApp[data-theme="dark"] header {
+[data-testid="stHeader"],
+header {
     background: #012F46 !important;
 }
-.stApp[data-theme="dark"] [data-testid="stToolbar"],
-.stApp[data-theme="dark"] header button,
-.stApp[data-theme="dark"] [role="menubutton"],
-.stApp[data-theme="dark"] [data-testid="stToolbar"] button {
+[data-testid="stToolbar"],
+header button,
+[role="menubutton"],
+[data-testid="stToolbar"] button {
     color: #ffffff !important;
 }
-.stApp[data-theme="dark"] [data-testid="stToolbar"] button:hover {
+[data-testid="stToolbar"] button:hover {
     background: #024d82 !important;
 }
-
-/* Dropdown menus, popover */
-.stApp[data-theme="dark"] [data-baseweb="popover"],
-.stApp[data-theme="dark"] [data-baseweb="menu"],
-.stApp[data-theme="dark"] [role="menu"],
-.stApp[data-theme="dark"] [role="menubar"],
-.stApp[data-theme="dark"] div[role="menu"],
-.stApp[data-theme="dark"] div[role="dialog"] {
+[data-baseweb="popover"],
+[data-baseweb="menu"],
+[role="menu"],
+[role="menubar"],
+div[role="menu"],
+div[role="dialog"] {
     background: #012F46 !important;
     border: 1px solid #024d82 !important;
     width: 180px !important;
@@ -284,9 +191,9 @@ window.addEventListener('DOMContentLoaded', function() {
     overflow: hidden !important;
     box-sizing: border-box !important;
 }
-.stApp[data-theme="dark"] [data-baseweb="menu"] *,
-.stApp[data-theme="dark"] [role="menu"] *,
-.stApp[data-theme="dark"] [role="menuitem"] {
+[data-baseweb="menu"] *,
+[role="menu"] *,
+[role="menuitem"] {
     color: #ffffff !important;
     background: #012F46 !important;
     width: 100% !important;
@@ -297,260 +204,31 @@ window.addEventListener('DOMContentLoaded', function() {
     display: block !important;
     box-sizing: border-box !important;
 }
-.stApp[data-theme="dark"] [data-baseweb="menu"] li:hover,
-.stApp[data-theme="dark"] [data-baseweb="menu"] button:hover,
-.stApp[data-theme="dark"] [role="menuitem"]:hover,
-.stApp[data-theme="dark"] [role="menu"] li:hover {
+[data-baseweb="menu"] li:hover,
+[data-baseweb="menu"] button:hover,
+[role="menuitem"]:hover,
+[role="menu"] li:hover {
     background: #024d82 !important;
     color: #ffffff !important;
 }
-
-/* Divider */
-.stApp[data-theme="dark"] hr {
+hr {
     border-color: #024d82 !important;
 }
-
-/* Streamlit alerts/messages */
-.stApp[data-theme="dark"] .stSuccess {
+.stSuccess {
     background: #013a5c !important;
     color: #E8F9EE !important;
 }
-.stApp[data-theme="dark"] .stError {
+.stError {
     background: #5c1a01 !important;
     color: #ff9999 !important;
 }
-.stApp[data-theme="dark"] .stWarning {
+.stWarning {
     background: #5c4a01 !important;
     color: #ffeb99 !important;
 }
-.stApp[data-theme="dark"] .stInfo {
+.stInfo {
     background: #013a5c !important;
     color: #99ccff !important;
-}
-
-/* ============================================================================
-[data-theme="light"] - СВЕТЛАЯ ТЕМА (#F8F9FA)
-============================================================================ */
-.stApp[data-theme="light"] {
-    background: #F8F9FA !important;
-}
-.stApp[data-theme="light"] * {
-    color: #0D1117 !important;
-}
-
-/* Основной контент */
-.stApp[data-theme="light"] .main {
-    background: #F8F9FA !important;
-}
-
-/* Sidebar */
-.stApp[data-theme="light"] section[data-testid="stSidebar"] {
-    background: #FFFFFF !important;
-    border-right: 1px solid #CED4DA !important;
-}
-.stApp[data-theme="light"] section[data-testid="stSidebar"] * {
-    color: #0D1117 !important;
-}
-.stApp[data-theme="light"] section[data-testid="stSidebar"] .stMarkdown {
-    color: #2C3339 !important;
-}
-
-/* Кнопки ВСЕ */
-.stApp[data-theme="light"] button,
-.stApp[data-theme="light"] .stButton > button,
-.stApp[data-theme="light"] [data-testid="stBaseButton-secondary"],
-.stApp[data-theme="light"] [data-testid="stBaseButton-primary"],
-.stApp[data-theme="light"] button p,
-.stApp[data-theme="light"] button span {
-    color: #ffffff !important;
-    background: #012F46 !important;
-    border: none !important;
-}
-.stApp[data-theme="light"] button:hover,
-.stApp[data-theme="light"] .stButton > button:hover {
-    background: #024d82 !important;
-}
-
-/* Ввод текста (Inputs) */
-.stApp[data-theme="light"] input,
-.stApp[data-theme="light"] .stTextInput > div > div > input,
-.stApp[data-theme="light"] textarea,
-.stApp[data-theme="light"] .stTextArea > div > div > textarea {
-    background: #FFFFFF !important;
-    color: #0D1117 !important;
-    border: 1px solid #CED4DA !important;
-}
-.stApp[data-theme="light"] input::placeholder,
-.stApp[data-theme="light"] textarea::placeholder {
-    color: #6c757d !important;
-}
-
-/* Select/Selectbox */
-.stApp[data-theme="light"] .stSelectbox > div > div,
-.stApp[data-theme="light"] [data-baseweb="select"] {
-    background: #FFFFFF !important;
-    color: #0D1117 !important;
-    border: 1px solid #CED4DA !important;
-}
-.stApp[data-theme="light"] [data-baseweb="select"] * {
-    color: #0D1117 !important;
-}
-
-/* Radio buttons */
-.stApp[data-theme="light"] .stRadio > div,
-.stApp[data-theme="light"] [role="radiogroup"] {
-    color: #0D1117 !important;
-}
-.stApp[data-theme="light"] .stRadio div[role="radiogroup"] label:has(input:checked) {
-    background: #012F46 !important;
-    color: #ffffff !important;
-    border-radius: 4px;
-}
-.stApp[data-theme="light"] .stRadio div[role="radiogroup"] label {
-    color: #2C3339 !important;
-}
-
-/* Checkbox */
-.stApp[data-theme="light"] .stCheckbox > label,
-.stApp[data-theme="light"] [role="checkbox"] {
-    color: #0D1117 !important;
-}
-
-/* Expanders/Details */
-.stApp[data-theme="light"] .streamlit-expander,
-.stApp[data-theme="light"] details {
-    background: #FFFFFF !important;
-    border: 1px solid #CED4DA !important;
-    border-radius: 4px;
-}
-.stApp[data-theme="light"] .streamlit-expander summary,
-.stApp[data-theme="light"] details summary {
-    color: #0D1117 !important;
-}
-.stApp[data-theme="light"] .streamlit-expander summary:hover,
-.stApp[data-theme="light"] details summary:hover {
-    background: #F8F9FA !important;
-}
-
-/* Slider */
-.stApp[data-theme="light"] .stSlider [role="slider"] {
-    background: #012F46 !important;
-}
-.stApp[data-theme="light"] .stSlider .stMarkdown {
-    color: #2C3339 !important;
-}
-
-/* Progress bar */
-.stApp[data-theme="light"] .stProgress > div > div {
-    background: #012F46 !important;
-}
-.stApp[data-theme="light"] .stProgress > div > div > div {
-    background: #012F46 !important;
-}
-
-/* Spinner */
-.stApp[data-theme="light"] .stSpinner > div {
-    border: 3px solid #F8F9FA !important;
-    border-top: 3px solid #012F46 !important;
-}
-
-/* Metric */
-.stApp[data-theme="light"] [data-testid="stMetricValue"] {
-    color: #012F46 !important;
-}
-.stApp[data-theme="light"] [data-testid="stMetricLabel"] {
-    color: #2C3339 !important;
-}
-
-/* Dataframe/Table */
-.stApp[data-theme="light"] .stDataFrame,
-.stApp[data-theme="light"] [data-testid="stDataFrame"] {
-    background: #FFFFFF !important;
-}
-.stApp[data-theme="light"] .stDataFrame thead th,
-.stApp[data-theme="light"] [data-testid="stDataFrame"] thead th {
-    background: #F8F9FA !important;
-    color: #0D1117 !important;
-}
-
-/* Download button */
-.stApp[data-theme="light"] .stDownloadButton > button {
-    color: #ffffff !important;
-    background: #012F46 !important;
-}
-
-/* Streamlit Header/Toolbar menu (три точки) */
-.stApp[data-theme="light"] [data-testid="stHeader"],
-.stApp[data-theme="light"] header {
-    background: #F8F9FA !important;
-}
-.stApp[data-theme="light"] [data-testid="stToolbar"],
-.stApp[data-theme="light"] header button,
-.stApp[data-theme="light"] [role="menubutton"],
-.stApp[data-theme="light"] [data-testid="stToolbar"] button {
-    color: #0D1117 !important;
-}
-.stApp[data-theme="light"] [data-testid="stToolbar"] button:hover {
-    background: #E8F9EE !important;
-}
-
-/* Dropdown menus, popover */
-.stApp[data-theme="light"] [data-baseweb="popover"],
-.stApp[data-theme="light"] [data-baseweb="menu"],
-.stApp[data-theme="light"] [role="menu"],
-.stApp[data-theme="light"] [role="menubar"],
-.stApp[data-theme="light"] div[role="menu"],
-.stApp[data-theme="light"] div[role="dialog"] {
-    background: #FFFFFF !important;
-    border: 1px solid #CED4DA !important;
-    width: 180px !important;
-    min-width: 180px !important;
-    max-width: 180px !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
-}
-.stApp[data-theme="light"] [data-baseweb="menu"] *,
-.stApp[data-theme="light"] [role="menu"] *,
-.stApp[data-theme="light"] [role="menuitem"] {
-    color: #0D1117 !important;
-    background: #FFFFFF !important;
-    width: 100% !important;
-    max-width: 180px !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    display: block !important;
-    box-sizing: border-box !important;
-}
-.stApp[data-theme="light"] [data-baseweb="menu"] li:hover,
-.stApp[data-theme="light"] [data-baseweb="menu"] button:hover,
-.stApp[data-theme="light"] [role="menuitem"]:hover,
-.stApp[data-theme="light"] [role="menu"] li:hover {
-    background: #E8F9EE !important;
-    color: #0D1117 !important;
-}
-
-/* Divider */
-.stApp[data-theme="light"] hr {
-    border-color: #CED4DA !important;
-}
-
-/* Streamlit alerts/messages */
-.stApp[data-theme="light"] .stSuccess {
-    background: #d4edda !important;
-    color: #155724 !important;
-}
-.stApp[data-theme="light"] .stError {
-    background: #f8d7da !important;
-    color: #721c24 !important;
-}
-.stApp[data-theme="light"] .stWarning {
-    background: #fff3cd !important;
-    color: #856404 !important;
-}
-.stApp[data-theme="light"] .stInfo {
-    background: #d1ecf1 !important;
-    color: #0c5460 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -576,14 +254,20 @@ def log_message(msg):
     if len(st.session_state.logs) > 100:
         st.session_state.logs.pop(0)
 
+@st.cache_resource
+def _cached_logo():
+    if LOGO_PATH.exists():
+        try:
+            return Image.open(LOGO_PATH)
+        except (OSError, IOError):
+            return None
+    return None
+
 # Логотип в боковой панели (в самом верху)
 col_logo1, col_logo2, col_logo3 = st.sidebar.columns([1, 2, 1])
-if LOGO_PATH.exists():
-    try:
-        img = Image.open(LOGO_PATH)
-        col_logo2.image(img, width=120)
-    except Exception as e:
-        col_logo2.caption("ЮгСпецСети")
+img = _cached_logo()
+if img:
+    col_logo2.image(img, width=120)
 else:
     col_logo2.caption("ЮгСпецСети")
 
@@ -621,46 +305,44 @@ if st.session_state.custom_apis:
         for name, api_data in llm_apis:
             st.sidebar.success(f"  ✅ {name}")
 
-# Переключатели (чекпоинты) для выбора API
+# Показать сохранённые API
 if st.session_state.custom_apis:
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🔧 Выбор активных API")
-    
-    # Инициализировать состояние чекпоинтов
-    if "api_checkboxes" not in st.session_state:
-        st.session_state.api_checkboxes = {name: False for name in st.session_state.custom_apis}
+    st.sidebar.subheader("🔧 Сохранённые API")
     
     # Чекпоинты для Поиска (синий)
-    st.sidebar.markdown("**🔍 Для поиска:**")
-    for name, api_data in st.session_state.custom_apis.items():
-        if api_data['type'] == 'search':
-            checked = st.sidebar.checkbox(f"✅ {name}", key=f"chk_search_{name}")
-            if checked:
-                st.session_state.selected_search_api = name
+    search_apis = {k: v for k, v in st.session_state.custom_apis.items() if v['type'] == 'search'}
+    if search_apis:
+        st.sidebar.markdown("**🔍 Поиск:**")
+        for name in search_apis:
+            st.sidebar.caption(f"  ✅ {name}")
     
     # Чекпоинты для LLM (фиолетовый)
-    st.sidebar.markdown("**🤖 Для обогащения:**")
-    for name, api_data in st.session_state.custom_apis.items():
-        if api_data['type'] == 'llm':
-            checked = st.sidebar.checkbox(f"✅ {name}", key=f"chk_llm_{name}")
-            if checked:
-                st.session_state.selected_llm_api = name
+    llm_apis = {k: v for k, v in st.session_state.custom_apis.items() if v['type'] == 'llm'}
+    if llm_apis:
+        st.sidebar.markdown("**🤖 AI:**")
+        for name in llm_apis:
+            st.sidebar.caption(f"  ✅ {name}")
     
-    # Подписи
-    st.sidebar.caption("🔍 - для поиска | 🤖 - для AI обогащения")
+    st.sidebar.caption("⚠️ Кастомные API пока не интегрированы в pipeline")
 
 try:
     from lm_studio_client import check_lm_studio, get_available_models as get_lm_models
     from groq_client import check_groq, get_available_models as get_groq_models
     from unclose_client import check_unclose, get_available_models as get_unclose_models
     
-    if check_lm_studio():
-        st.sidebar.success("✅ LM-Studio: Подключен")
-    if check_groq():
+    @st.cache_resource(ttl=300)
+    def _cached_check_groq():
+        return check_groq()
+    @st.cache_resource(ttl=300)
+    def _cached_groq_models():
+        return get_groq_models()
+    
+    if _cached_check_groq():
         st.sidebar.success("✅ Groq: Подключен")
-    if check_unclose():
-        st.sidebar.success("✅ UncloseAI: Подключен")
-except:
+    else:
+        st.sidebar.warning("⚠️ Groq: Не настроен")
+except Exception:
     st.sidebar.warning("⚠️ AI: Не настроен")
 
 # Кнопка управления API
@@ -697,7 +379,6 @@ if st.session_state.get("show_api_modal", False):
             save_custom_apis(st.session_state.custom_apis)
             st.session_state.show_api_modal = False
             st.sidebar.success("✅ API сохранён!")
-            time.sleep(1)
             st.rerun()
         else:
             st.sidebar.error("Введите название и ключ!")
@@ -731,34 +412,45 @@ with ai_col1:
     )
 
 with ai_col2:
-    if ai_provider == "LM Studio":
-        lm_models = get_lm_models()
+    ai_model = ""
+    if ai_provider == "Groq":
+        groq_models = _cached_groq_models()
+        if groq_models:
+            model_options = [(k, v) for k, v in groq_models.items()]
+            model_labels = [f"{v} ({k})" for k, v in groq_models.items()]
+            selected_idx = st.selectbox(
+                "Модель:",
+                range(len(model_labels)),
+                format_func=lambda i: model_labels[i]
+            )
+            ai_model = model_options[selected_idx][0]
+            st.caption("Лимит: 30 req/min, 40k токенов/мин")
+        else:
+            st.selectbox("Модель:", ["Модели не найдены"], disabled=True)
+    elif ai_provider == "LM Studio":
+        with st.spinner("Подключение к LM Studio..."):
+            lm_models = get_lm_models()
         if lm_models:
             ai_model = st.selectbox("Модель:", lm_models, help="Выберите модель из LM Studio")
         else:
-            ai_model = st.selectbox("Модель:", ["Модели не найдены"], disabled=True)
-    elif ai_provider == "Groq":
-        groq_models = get_groq_models()
-        model_options = [(k, v) for k, v in groq_models.items()]
-        model_labels = [f"{v} ({k})" for k, v in groq_models.items()]
-        selected_idx = st.selectbox(
-            "Модель:",
-            range(len(model_labels)),
-            format_func=lambda i: model_labels[i]
-        )
-        ai_model = model_options[selected_idx][0]
-        st.caption("Лимит: 30 req/min, 40k токенов/мин")
+            st.selectbox("Модель:", ["LM Studio не запущен"], disabled=True)
+            st.caption("Запустите LM Studio на localhost:1234")
     else:  # UncloseAI
-        unclose_models = get_unclose_models()
-        model_options = [(k, v) for k, v in unclose_models.items()]
-        model_labels = [f"{v} ({k})" for k, v in unclose_models.items()]
-        selected_idx = st.selectbox(
-            "Модель:",
-            range(len(model_labels)),
-            format_func=lambda i: model_labels[i]
-        )
-        ai_model = model_options[selected_idx][0]
-        st.caption("Безлимит, не требует API ключа")
+        with st.spinner("Проверка UncloseAI..."):
+            unclose_models = get_unclose_models()
+        if unclose_models:
+            model_options = [(k, v) for k, v in unclose_models.items()]
+            model_labels = [f"{v} ({k})" for k, v in unclose_models.items()]
+            selected_idx = st.selectbox(
+                "Модель:",
+                range(len(model_labels)),
+                format_func=lambda i: model_labels[i]
+            )
+            ai_model = model_options[selected_idx][0]
+            st.caption("Безлимит, не требует API ключа")
+        else:
+            st.selectbox("Модель:", ["UncloseAI недоступен"], disabled=True)
+            st.caption("Сервис временно недоступен")
 
 st.session_state.ai_provider = ai_provider
 st.session_state.ai_model = ai_model
@@ -812,17 +504,27 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, use_container_
     
     log_message(f"🔍 DEBUG: current_city='{current_city}', current_niche='{current_niche}'")
     
-    # Для кастомной ниши - используем как есть
+    # Определяем ключевые слова и маркеры
     if manual_niche.strip():
-        final_niches = [manual_niche.strip()]
+        # Кастомная ниша — одно ключевое слово + стандартные маркеры
+        final_keywords = [manual_niche.strip()]
+        final_markers = config.PRIMARY_MARKERS + config.SECONDARY_MARKERS
     else:
-        niche_val = config.HUNTER_QUERIES.get(niche, [])
-        final_niches = niche_val if isinstance(niche_val, list) else [niche_val]
+        # Выбор из списка — новая структура с маркерами
+        niche_val = config.HUNTER_QUERIES.get(niche, {})
+        if isinstance(niche_val, dict):
+            final_keywords = niche_val.get("keywords", [])
+            final_markers = config.PRIMARY_MARKERS + config.SECONDARY_MARKERS
+        else:
+            # Фallback для старой структуры (если вдруг осталась)
+            final_keywords = niche_val if isinstance(niche_val, list) else [niche_val]
+            final_markers = config.PRIMARY_MARKERS + config.SECONDARY_MARKERS
     
     log_message(f"🎯 Категория: {current_niche}")
-    log_message(f"📝 Ниши для поиска: {final_niches}")
+    log_message(f"📝 Ключевых слов: {len(final_keywords)}, маркеров: {len(final_markers)}")
     
     seen_names = set()
+    seen_urls = set()
     results = []
     
     # Placeholder для live-лога
@@ -834,20 +536,64 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, use_container_
         log_placeholder.info(msg)
     
     async def run_search():
-        for i, q_niche in enumerate(final_niches):
+        total_queries = len(final_keywords) * (len(config.PRIMARY_MARKERS) + len(config.SECONDARY_MARKERS))
+        query_count = 0
+        
+        # Фаза 1: Primary маркеры (официальный сайт, контакты, реквизиты, телефон, ООО)
+        primary_markers = config.PRIMARY_MARKERS
+        for keyword in final_keywords:
             if st.session_state.stop_requested: break
-            query = f"{q_niche} {current_city}".strip()
-            live_log(f"📡 Поиск: {query}...")
-            progress_bar.progress((i + 1) / len(final_niches))
-            
-            batch = await search_providers.fetch_companies(query, limit, log_func=live_log)
-            for item in batch:
-                name = item.get('name', '').strip().lower()
-                if name and name not in seen_names:
-                    seen_names.add(name)
-                    results.append(item)
-            live_log(f"✅ Найдено уникальных: {len(results)}")
-            if len(results) >= limit: break
+            for marker in primary_markers:
+                if st.session_state.stop_requested: break
+                query = f"{keyword} {current_city} {marker}".strip()
+                query_count += 1
+                live_log(f"📡 [{query_count}/{total_queries}] {query}")
+                progress_bar.progress(query_count / total_queries)
+                
+                batch = await search_providers.fetch_companies(query, limit, log_func=live_log)
+                for item in batch:
+                    name = item.get('name', '').strip().lower()
+                    url = (item.get('websites') or [''])[0]
+                    if name and name not in seen_names:
+                        seen_names.add(name)
+                        if url:
+                            seen_urls.add(url)
+                        results.append(item)
+                
+                if len(results) >= limit:
+                    live_log(f"✅ Достигнут лимит: {len(results)} компаний")
+                    break
+            if len(results) >= limit:
+                break
+        
+        # Фаза 2: Secondary маркеры (только если мало результатов)
+        if len(results) < limit:
+            secondary_markers = config.SECONDARY_MARKERS
+            live_log(f"🔄 Мало результатов ({len(results)}), добавляем secondary маркеры...")
+            for keyword in final_keywords:
+                if st.session_state.stop_requested: break
+                for marker in secondary_markers:
+                    if st.session_state.stop_requested: break
+                    query = f"{keyword} {current_city} {marker}".strip()
+                    query_count += 1
+                    live_log(f"📡 [{query_count}/{total_queries}] {query}")
+                    progress_bar.progress(min(query_count / total_queries, 1.0))
+                    
+                    batch = await search_providers.fetch_companies(query, limit, log_func=live_log)
+                    for item in batch:
+                        name = item.get('name', '').strip().lower()
+                        url = (item.get('websites') or [''])[0]
+                        if name and name not in seen_names:
+                            seen_names.add(name)
+                            if url:
+                                seen_urls.add(url)
+                            results.append(item)
+                    
+                    if len(results) >= limit:
+                        live_log(f"✅ Достигнут лимит: {len(results)} компаний")
+                        break
+                if len(results) >= limit:
+                    break
         
         progress_bar.progress(1.0)
     
@@ -884,7 +630,7 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
     
     if sys.platform == 'win32':
         try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        except: pass
+        except Exception: pass
 
     processed_data = []
     
