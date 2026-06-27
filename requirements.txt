@@ -6,3 +6,7 @@ python-dotenv
 playwright
 aiohttp
 ddgs
+beautifulsoup4
+extruct
+email-validator
+w3lib

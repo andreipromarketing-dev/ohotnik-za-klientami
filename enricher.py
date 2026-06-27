@@ -1,11 +1,50 @@
 import asyncio
 import html as html_module
+import json
 import re
 import urllib.parse
 import aiohttp
 import config
+from pathlib import Path
 from playwright.async_api import async_playwright
 from search_providers import AGGREGATOR_BODY_SIGNALS, SINGLE_BUSINESS_SIGNALS
+
+CHECKPOINT_DIR = Path.home() / ".ohotnik"
+CHECKPOINT_FILE = CHECKPOINT_DIR / "checkpoint.json"
+
+
+def save_checkpoint(results, processed_urls, search_params):
+    """Сохраняет промежуточные результаты на диск"""
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    data = {
+        "results": results,
+        "processed_urls": list(processed_urls),
+        "search_params": search_params,
+        "raw_items": search_params.get("raw_items", []),
+    }
+    CHECKPOINT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_checkpoint():
+    """Загружает чекпоинт. Возвращает (results, processed_urls, search_params, raw_items) или None"""
+    if not CHECKPOINT_FILE.exists():
+        return None
+    try:
+        data = json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
+        return (
+            data.get("results", []),
+            set(data.get("processed_urls", [])),
+            data.get("search_params", {}),
+            data.get("raw_items", []),
+        )
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def delete_checkpoint():
+    """Удаляет чекпоинт после успешного завершения"""
+    if CHECKPOINT_FILE.exists():
+        CHECKPOINT_FILE.unlink()
 
 try:
     from lm_studio_client import analyze_page_with_ai as ai_analyze_lm, check_lm_studio as check_ai_lm, get_available_models as get_lm_models
@@ -642,9 +681,14 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
     return res
 
 
-async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model=""):
-    """Параллельный парсинг сайтов"""
+async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model="",
+                        processed_urls=None, search_params=None, checkpoint_every=20):
+    """Параллельный парсинг сайтов с автосохранением"""
     semaphore = asyncio.Semaphore(7)
+    skip_urls = processed_urls or set()
+    results_so_far = []
+    search_params = search_params or {}
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, channel='chrome')
 
@@ -678,14 +722,37 @@ async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM
                     "Адрес": item.get('addr', '—'),
                 }
 
-        tasks = [sem_enrich(item) for item in items_list]
+        # Фильтруем уже обработанные
+        remaining = []
+        for item in items_list:
+            site = (item.get('websites') or [None])[0]
+            if site and site in skip_urls:
+                continue
+            remaining.append(item)
+
+        if skip_urls and log_func:
+            log_func(f"⏩ Пропускаем {len(skip_urls)} уже обработанных, осталось {len(remaining)}")
+
+        tasks = [sem_enrich(item) for item in remaining]
+        count = 0
         for coro in asyncio.as_completed(tasks):
             try:
                 result = await coro
+                count += 1
+                results_so_far.append(result)
+                # Автосохранение каждые N результатов
+                if count % checkpoint_every == 0:
+                    all_urls = skip_urls | {r.get("Сайт", "") for r in results_so_far if r.get("Сайт", "") != "—"}
+                    save_checkpoint(results_so_far, all_urls, search_params)
+                    if log_func: log_func(f"💾 Чекпоинт сохранён ({count} обработано)")
                 yield result
             except Exception as e:
                 if log_func: log_func(f"❌ Task error: {str(e)[:50]}")
                 continue
+
+        # Финальное сохранение
+        all_urls = skip_urls | {r.get("Сайт", "") for r in results_so_far if r.get("Сайт", "") != "—"}
+        save_checkpoint(results_so_far, all_urls, search_params)
 
         try:
             await browser.close()

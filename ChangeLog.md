@@ -1,5 +1,33 @@
 # ChangeLog
 
+## v3.4 (28.06.2026)
+
+### Автосохранение и возобновление
+
+- **Чекпоинты**: результаты обогащения сохраняются на диск каждые 20 сайтов (`~/.ohotnik/checkpoint.json`)
+- **Кнопка "Продолжить предыдущую сессию"**: при обнаружении чекпоинта показывается кнопка для возобновления
+- **Пропуск обработанных URL**: при возобновлении уже обработанные сайты пропускаются
+- **Сохранение raw_items**: параметры поиска сохраняются в чекпоинт для полного восстановления
+- **Защита от StopException**: `log_message()` обёрнут в try/except, enrichment loop защищён от крашей
+- **UI обёрнут в try/except**: progress bar и stats placeholder не крашат при прерывании
+
+### UI — Emil Kowalski Design Engineering
+
+- **Тактильность кнопок**: `scale(0.97)` на `:active` — кнопки «прогибаются» при нажатии
+- **Плавные transitions**: input, select, radio, expander — плавные переходы вместо резких скачков
+- **Hover-эффекты**: кнопки с мятным свечением, expander с плавным подсвечиванием
+- **Фокус ring**: `box-shadow` + `border-color` на фокусе, `outline` на `:focus-visible` для accessibility
+- **Глубина**: `box-shadow` на expander, alerts, dialog — элементы « парят» над фоном
+- **Анимация заголовков**: `fadeInUp` на h1/h2 — плавное появление при загрузке
+- **Progress bar**: `transition: width 300ms ease-out` — плавное заполнение
+- **CSS-переменные**: `--ease-out`, `--dur-fast`, `--shadow-sm` для единообразия
+- **Accessibility**: `@media (prefers-reduced-motion)` — отключает анимации для sensitive users
+
+### Установлены скиллы
+
+- **emil-design-eng**: философия дизайн-инженерии от Emil Kowalski (анимации, компоненты, CSS)
+- **review-animations**: ревью анимаций по 10 стандартам (Block/Approve вердикт)
+
 ## v3.3 (26.06.2026)
 
 ### Критические исправления

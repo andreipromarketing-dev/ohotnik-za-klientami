@@ -14,3 +14,5 @@ __pycache__/
 venv/
 env/
 temp_perplexica/
+.api_keys.enc
+*.enc

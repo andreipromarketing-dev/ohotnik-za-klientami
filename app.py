@@ -48,36 +48,62 @@ st.set_page_config(page_title="ЮгСпецСети | Охотник за кли
 
 st.markdown("""
 <style>
-/* ТЁМНАЯ ТЕМА (#012F46) — прямые селекторы */
-.stApp {
-    background: #012F46 !important;
+/* ====================================================================
+   ТЁМНАЯ ТЕМА #012F46 — Emil Kowalski design engineering standards
+   ==================================================================== */
+
+/* --- CSS Variables --- */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 150ms;
+  --dur-normal: 200ms;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
 }
-.main {
-    background: #012F46 !important;
-}
-section[data-testid="stSidebar"] {
-    background: #013a5c !important;
-}
-section[data-testid="stSidebar"] * {
-    color: #ffffff !important;
-}
-section[data-testid="stSidebar"] .stMarkdown {
-    color: #b0c4d4 !important;
-}
+
+/* --- Base --- */
+.stApp { background: #012F46 !important; }
+.main { background: #012F46 !important; }
+
+/* --- Sidebar --- */
+section[data-testid="stSidebar"] { background: #013a5c !important; }
+section[data-testid="stSidebar"] * { color: #ffffff !important; }
+section[data-testid="stSidebar"] .stMarkdown { color: #b0c4d4 !important; }
+
+/* --- Buttons: tactile feedback --- */
 .stButton > button,
 [data-testid="stBaseButton-secondary"],
 [data-testid="stBaseButton-primary"] {
     color: #0D1117 !important;
     background: #E8F9EE !important;
     border: none !important;
+    transition: transform var(--dur-fast) var(--ease-out),
+                background var(--dur-normal) ease,
+                box-shadow var(--dur-fast) ease !important;
 }
 .stButton > button p,
-.stButton > button span {
-    color: #0D1117 !important;
-}
+.stButton > button span { color: #0D1117 !important; }
 .stButton > button:hover {
     background: #d4f4e3 !important;
+    box-shadow: 0 2px 8px rgba(232,249,238,0.25) !important;
 }
+.stButton > button:active {
+    transform: scale(0.97) !important;
+}
+.stButton > button:focus-visible {
+    outline: 2px solid #E8F9EE !important;
+    outline-offset: 2px !important;
+}
+.stDownloadButton > button {
+    color: #0D1117 !important;
+    background: #E8F9EE !important;
+    transition: transform var(--dur-fast) var(--ease-out),
+                background var(--dur-normal) ease !important;
+}
+.stDownloadButton > button:active { transform: scale(0.97) !important; }
+
+/* --- Inputs: smooth focus ring --- */
 input,
 .stTextInput > div > div > input,
 textarea,
@@ -85,115 +111,117 @@ textarea,
     background: #024d82 !important;
     color: #ffffff !important;
     border: 1px solid #024d82 !important;
+    transition: border-color var(--dur-fast) ease,
+                box-shadow var(--dur-fast) ease !important;
 }
-input::placeholder,
-textarea::placeholder {
-    color: #b0c4d4 !important;
+input::placeholder, textarea::placeholder { color: #b0c4d4 !important; }
+input:focus, textarea:focus {
+    border-color: #E8F9EE !important;
+    box-shadow: 0 0 0 1px #E8F9EE !important;
 }
+input:focus-visible, textarea:focus-visible {
+    outline: 2px solid #E8F9EE !important;
+    outline-offset: 2px !important;
+}
+
+/* --- Select --- */
 .stSelectbox > div > div,
 [data-baseweb="select"] {
     background: #024d82 !important;
     color: #ffffff !important;
     border: 1px solid #024d82 !important;
+    transition: border-color var(--dur-fast) ease,
+                box-shadow var(--dur-fast) ease !important;
 }
-[data-baseweb="select"] * {
-    color: #ffffff !important;
+[data-baseweb="select"] * { color: #ffffff !important; }
+[data-baseweb="select"]:focus-within {
+    border-color: #E8F9EE !important;
+    box-shadow: 0 0 0 1px #E8F9EE !important;
 }
-.stRadio > div,
-[role="radiogroup"] {
-    color: #ffffff !important;
+
+/* --- Radio: smooth toggle --- */
+.stRadio > div, [role="radiogroup"] { color: #ffffff !important; }
+.stRadio div[role="radiogroup"] label {
+    color: #b0c4d4 !important;
+    transition: background var(--dur-fast) ease,
+                color var(--dur-fast) ease !important;
 }
 .stRadio div[role="radiogroup"] label:has(input:checked) {
     background: #E8F9EE !important;
     color: #0D1117 !important;
     border-radius: 4px;
 }
-.stRadio div[role="radiogroup"] label {
-    color: #b0c4d4 !important;
-}
-.stCheckbox > label,
-[role="checkbox"] {
-    color: #ffffff !important;
-}
-.streamlit-expander,
-details {
+
+/* --- Checkbox --- */
+.stCheckbox > label, [role="checkbox"] { color: #ffffff !important; }
+
+/* --- Expander: depth + smooth hover --- */
+.streamlit-expander, details {
     background: #013a5c !important;
     border: 1px solid #024d82 !important;
-    border-radius: 4px;
+    border-radius: 6px;
+    box-shadow: var(--shadow-sm) !important;
 }
-.streamlit-expander summary,
-details summary {
+.streamlit-expander summary, details summary {
     color: #ffffff !important;
+    transition: background var(--dur-fast) ease !important;
 }
-.streamlit-expander summary:hover,
-details summary:hover {
+.streamlit-expander summary:hover, details summary:hover {
     background: #024d82 !important;
 }
-.stSlider [role="slider"] {
-    background: #E8F9EE !important;
-}
-.stSlider .stMarkdown {
-    color: #b0c4d4 !important;
-}
-.stProgress > div > div {
-    background: #E8F9EE !important;
-}
+
+/* --- Slider --- */
+.stSlider [role="slider"] { background: #E8F9EE !important; }
+.stSlider .stMarkdown { color: #b0c4d4 !important; }
+
+/* --- Progress: smooth fill --- */
+.stProgress > div > div { background: #E8F9EE !important; }
 .stProgress > div > div > div {
     background: #E8F9EE !important;
+    transition: width 300ms var(--ease-out) !important;
 }
+
+/* --- Spinner --- */
 .stSpinner > div {
     border: 3px solid #013a5c !important;
     border-top: 3px solid #E8F9EE !important;
 }
-[data-testid="stMetricValue"] {
-    color: #E8F9EE !important;
-}
-[data-testid="stMetricLabel"] {
-    color: #b0c4d4 !important;
-}
-.stDataFrame,
-[data-testid="stDataFrame"] {
+
+/* --- Metrics --- */
+[data-testid="stMetricValue"] { color: #E8F9EE !important; }
+[data-testid="stMetricLabel"] { color: #b0c4d4 !important; }
+
+/* --- DataFrame: depth + row stagger animation --- */
+.stDataFrame, [data-testid="stDataFrame"] {
     background: #013a5c !important;
+    box-shadow: var(--shadow-sm) !important;
 }
-.stDataFrame thead th,
-[data-testid="stDataFrame"] thead th {
+.stDataFrame thead th, [data-testid="stDataFrame"] thead th {
     background: #024d82 !important;
     color: #ffffff !important;
 }
-.stDownloadButton > button {
-    color: #0D1117 !important;
-    background: #E8F9EE !important;
-}
-[data-testid="stHeader"],
-header {
-    background: #012F46 !important;
-}
-[data-testid="stToolbar"],
-header button,
-[role="menubutton"],
-[data-testid="stToolbar"] button {
-    color: #ffffff !important;
-}
-[data-testid="stToolbar"] button:hover {
-    background: #024d82 !important;
-}
+
+/* --- Header --- */
+[data-testid="stHeader"], header { background: #012F46 !important; }
+[data-testid="stToolbar"], header button, [role="menubutton"],
+[data-testid="stToolbar"] button { color: #ffffff !important; }
+[data-testid="stToolbar"] button:hover { background: #024d82 !important; }
+
+/* --- Popover / Menu / Dialog: depth --- */
 [data-baseweb="popover"],
 [data-baseweb="menu"],
-[role="menu"],
-[role="menubar"],
-div[role="menu"],
-div[role="dialog"] {
+[role="menu"], [role="menubar"],
+div[role="menu"], div[role="dialog"] {
     background: #012F46 !important;
     border: 1px solid #024d82 !important;
+    box-shadow: var(--shadow-md) !important;
     width: 180px !important;
     min-width: 180px !important;
     max-width: 180px !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
 }
-[data-baseweb="menu"] *,
-[role="menu"] *,
-[role="menuitem"] {
+[data-baseweb="menu"] *, [role="menu"] *, [role="menuitem"] {
     color: #ffffff !important;
     background: #012F46 !important;
     width: 100% !important;
@@ -211,24 +239,42 @@ div[role="dialog"] {
     background: #024d82 !important;
     color: #ffffff !important;
 }
-hr {
-    border-color: #024d82 !important;
+
+/* --- Separator --- */
+hr { border-color: #024d82 !important; }
+
+/* --- Alerts: depth --- */
+.stSuccess { background: #013a5c !important; color: #E8F9EE !important; box-shadow: var(--shadow-sm) !important; }
+.stError { background: #5c1a01 !important; color: #ff9999 !important; box-shadow: var(--shadow-sm) !important; }
+.stWarning { background: #5c4a01 !important; color: #ffeb99 !important; box-shadow: var(--shadow-sm) !important; }
+.stInfo { background: #013a5c !important; color: #99ccff !important; box-shadow: var(--shadow-sm) !important; }
+
+/* ====================================================================
+   ANIMATIONS — Emil Kowalski philosophy
+   ==================================================================== */
+
+/* --- Title entrance --- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.stSuccess {
-    background: #013a5c !important;
-    color: #E8F9EE !important;
+.stApp h1, .stApp h2 {
+    animation: fadeInUp 400ms var(--ease-out) both;
 }
-.stError {
-    background: #5c1a01 !important;
-    color: #ff9999 !important;
+
+/* --- Row stagger for results table --- */
+@keyframes fadeInRow {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.stWarning {
-    background: #5c4a01 !important;
-    color: #ffeb99 !important;
-}
-.stInfo {
-    background: #013a5c !important;
-    color: #99ccff !important;
+
+/* --- Reduced motion: accessibility --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -247,12 +293,19 @@ if "stop_requested" not in st.session_state:
     st.session_state.stop_requested = False
 if "custom_apis" not in st.session_state:
     st.session_state.custom_apis = load_custom_apis()
+if "checkpoint_info" not in st.session_state:
+    # Проверяем наличие чекпоинта при старте
+    cp = enricher.load_checkpoint()
+    st.session_state.checkpoint_info = cp
 
 def log_message(msg):
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{timestamp}] {msg}")
-    if len(st.session_state.logs) > 100:
-        st.session_state.logs.pop(0)
+    try:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        st.session_state.logs.append(f"[{timestamp}] {msg}")
+        if len(st.session_state.logs) > 100:
+            st.session_state.logs.pop(0)
+    except Exception:
+        pass
 
 @st.cache_resource
 def _cached_logo():
@@ -633,22 +686,38 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
         except Exception: pass
 
     processed_data = []
+    search_params = {
+        "ai_provider": st.session_state.ai_provider,
+        "ai_model": st.session_state.ai_model,
+        "total": total,
+        "raw_items": st.session_state.raw_items,
+    }
     
     async def run_enrichment():
         count = 0
-        async for result in enricher.batch_process(
-            st.session_state.raw_items, 
-            log_func=log_message, 
-            use_ai=True,
-            ai_provider=st.session_state.ai_provider,
-            ai_model=st.session_state.ai_model
-        ):
-            if st.session_state.stop_requested: break
-            
-            count += 1
-            processed_data.append(result)
-            progress_bar.progress(count / total)
-            stats_placeholder.info(f"📊 {count}/{total}")
+        try:
+            async for result in enricher.batch_process(
+                st.session_state.raw_items, 
+                log_func=log_message, 
+                use_ai=True,
+                ai_provider=st.session_state.ai_provider,
+                ai_model=st.session_state.ai_model,
+                search_params=search_params
+            ):
+                if st.session_state.stop_requested:
+                    log_message("🛑 Остановлено пользователем. Результаты сохранены.")
+                    break
+                
+                count += 1
+                processed_data.append(result)
+                try:
+                    progress_bar.progress(count / total)
+                    stats_placeholder.info(f"📊 {count}/{total}")
+                except Exception:
+                    pass
+        except Exception as e:
+            # Сохраняем checkpoint при любом краше
+            log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
         
         st.session_state.hunter_data = processed_data
         log_message("=" * 40)
@@ -657,6 +726,86 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
     asyncio.run(run_enrichment())
     play_sound()
     st.success("✅ Парсинг + AI завершён!")
+
+# Кнопка "Продолжить предыдущую сессию"
+if st.session_state.get('checkpoint_info'):
+    cp_results, cp_urls, cp_params, cp_raw = st.session_state.checkpoint_info
+    if cp_results:
+        st.info(f"💾 Найден чекпоинт: {len(cp_results)} обработанных, {len(cp_urls)} URL")
+        if st.button("▶️ Продолжить предыдущую сессию", type="primary", use_container_width=True):
+            st.session_state.stop_requested = False
+            # Восстанавливаем данные из чекпоинта
+            existing_data = st.session_state.hunter_data or []
+            existing_data.extend(cp_results)
+            st.session_state.hunter_data = existing_data
+            
+            # Восстанавливаем raw_items из чекпоинта если нет текущих
+            if not st.session_state.raw_items and cp_raw:
+                st.session_state.raw_items = cp_raw
+            
+            # Фильтруем raw_items — убираем уже обработанные
+            remaining = [item for item in st.session_state.raw_items 
+                        if (item.get('websites') or [None])[0] not in cp_urls]
+            
+            if not remaining:
+                st.success("✅ Все компании уже обработаны в предыдущей сессии!")
+            else:
+                total = len(remaining)
+                log_message(f"▶️ Продолжаем: {total} компаний осталось")
+                log_message(f"🤖 AI: {st.session_state.ai_provider} ({st.session_state.ai_model})")
+                
+                progress_bar = st.progress(0)
+                stats_placeholder = st.empty()
+                
+                if sys.platform == 'win32':
+                    try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                    except Exception: pass
+
+                processed_data = list(st.session_state.hunter_data)
+                search_params = {
+                    "ai_provider": st.session_state.ai_provider,
+                    "ai_model": st.session_state.ai_model,
+                    "total": total,
+                    "raw_items": remaining,
+                }
+                
+                async def run_resume():
+                    count = 0
+                    try:
+                        async for result in enricher.batch_process(
+                            remaining,
+                            log_func=log_message,
+                            use_ai=True,
+                            ai_provider=st.session_state.ai_provider,
+                            ai_model=st.session_state.ai_model,
+                            processed_urls=cp_urls,
+                            search_params=search_params
+                        ):
+                            if st.session_state.stop_requested:
+                                log_message("🛑 Остановлено. Результаты сохранены.")
+                                break
+                            count += 1
+                            processed_data.append(result)
+                            try:
+                                progress_bar.progress(count / total)
+                                stats_placeholder.info(f"📊 {count}/{total}")
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
+                    
+                    st.session_state.hunter_data = processed_data
+                    log_message("=" * 40)
+                    log_message(f"✅ ГОТОВО: {count} новых лидов (всего {len(processed_data)})")
+                
+                asyncio.run(run_resume())
+                play_sound()
+                st.success("✅ Продолжение завершено!")
+            
+            # Удаляем чекпоинт после успешного возобновления
+            enricher.delete_checkpoint()
+            st.session_state.checkpoint_info = None
+            st.rerun()
 
 if col_stop.button("🛑 СТОП", use_container_width=True):
     st.session_state.stop_requested = True
