@@ -729,7 +729,7 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
 
 # Кнопка "Продолжить предыдущую сессию"
 if st.session_state.get('checkpoint_info'):
-    cp_results, cp_urls, cp_params, cp_raw = st.session_state.checkpoint_info
+    cp_results, cp_urls, cp_params, cp_raw, cp_names = st.session_state.checkpoint_info
     if cp_results:
         st.info(f"💾 Найден чекпоинт: {len(cp_results)} обработанных, {len(cp_urls)} URL")
         if st.button("▶️ Продолжить предыдущую сессию", type="primary", use_container_width=True):
@@ -741,9 +741,9 @@ if st.session_state.get('checkpoint_info'):
             if not st.session_state.raw_items and cp_raw:
                 st.session_state.raw_items = cp_raw
             
-            # Фильтруем raw_items — убираем уже обработанные
+            # Фильтруем по ИМЕНИ компании (не по URL — URL может измениться из-за редиректа)
             remaining = [item for item in st.session_state.raw_items 
-                        if (item.get('websites') or [None])[0] not in cp_urls]
+                        if item.get('name', '').strip() not in cp_names]
             
             if not remaining:
                 st.success("✅ Все компании уже обработаны в предыдущей сессии!")

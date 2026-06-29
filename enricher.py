@@ -17,9 +17,11 @@ CHECKPOINT_FILE = CHECKPOINT_DIR / "checkpoint.json"
 def save_checkpoint(results, processed_urls, search_params):
     """Сохраняет промежуточные результаты на диск"""
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    company_names = [r.get("Компания", "") for r in results if r.get("Компания", "") != "—"]
     data = {
         "results": results,
         "processed_urls": list(processed_urls),
+        "company_names": company_names,
         "search_params": search_params,
         "raw_items": search_params.get("raw_items", []),
     }
@@ -27,7 +29,7 @@ def save_checkpoint(results, processed_urls, search_params):
 
 
 def load_checkpoint():
-    """Загружает чекпоинт. Возвращает (results, processed_urls, search_params, raw_items) или None"""
+    """Загружает чекпоинт. Возвращает (results, processed_urls, search_params, raw_items, company_names) или None"""
     if not CHECKPOINT_FILE.exists():
         return None
     try:
@@ -37,6 +39,7 @@ def load_checkpoint():
             set(data.get("processed_urls", [])),
             data.get("search_params", {}),
             data.get("raw_items", []),
+            set(data.get("company_names", [])),
         )
     except (json.JSONDecodeError, KeyError):
         return None
