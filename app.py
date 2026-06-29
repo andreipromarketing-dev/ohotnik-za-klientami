@@ -307,6 +307,33 @@ def log_message(msg):
     except Exception:
         pass
 
+def _render_live_table(placeholder, export_ph, data):
+    """Рисует таблицу + метрики + кнопку экспорта в плейсхолдер"""
+    try:
+        tmp_df = pd.DataFrame(data)
+        with placeholder.container():
+            st.dataframe(tmp_df, hide_index=True, width='stretch')
+            cols = st.columns(4)
+            cols[0].metric("Лидов", len(tmp_df))
+            cols[1].metric("С телефонами", sum(1 for r in data if r.get("Телефон", "—") != "—"))
+            cols[2].metric("С email", sum(1 for r in data if r.get("Email", "—") != "—"))
+            cols[3].metric("Найден ЛПР", sum(1 for r in data if r.get("ЛПР", "—") != "—"))
+        with export_ph.container():
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                tmp_df.to_excel(writer, index=False, sheet_name='Leads')
+            st.download_button(
+                "📥 Скачать Excel",
+                data=buffer.getvalue(),
+                file_name=f"leads_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                type="primary",
+                key=f"live_export_{len(data)}",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    except Exception:
+        pass
+
+
 @st.cache_resource
 def _cached_logo():
     if LOGO_PATH.exists():
@@ -400,7 +427,7 @@ except Exception:
 
 # Кнопка управления API
 st.sidebar.markdown("---")
-if st.sidebar.button("➕ Добавить API", use_container_width=True):
+if st.sidebar.button("➕ Добавить API", width='stretch'):
     st.session_state.show_api_modal = True
 
 # Модальное окно для добавления API
@@ -421,7 +448,7 @@ if st.session_state.get("show_api_modal", False):
     col_save, col_cancel = st.sidebar.columns(2)
 
     # Кнопка зеленая 
-    if col_save.button("✅ Сохранить", key="save_btn", use_container_width=True):
+    if col_save.button("✅ Сохранить", key="save_btn", width='stretch'):
         if api_name and api_key:
             st.session_state.custom_apis[api_name] = {
                 "type": "search" if api_type == "🔍 Поиск" else "llm",
@@ -437,7 +464,7 @@ if st.session_state.get("show_api_modal", False):
             st.sidebar.error("Введите название и ключ!")
 
     # Кнопка красная 
-    if col_cancel.button("❌ Отмена", key="cancel_btn", use_container_width=True):
+    if col_cancel.button("❌ Отмена", key="cancel_btn", width='stretch'):
         st.session_state.show_api_modal = False
         st.rerun()
 
@@ -538,7 +565,7 @@ has_step1 = bool(st.session_state.get('raw_items'))
 step1_type = "secondary" if has_step1 else "primary"
 step2_type = "primary" if has_step1 else "secondary"
 
-if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, use_container_width=True):
+if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch'):
     st.session_state.stop_requested = False
     st.session_state.raw_items = []
     st.session_state.hunter_data = []
@@ -672,7 +699,7 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, use_container_
         st.error("❌ Ничего не найдено или проверьте API-ключи.")
     st.rerun()
 
-if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled=not st.session_state.raw_items, use_container_width=True):
+if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled=not st.session_state.raw_items, width='stretch'):
     st.session_state.stop_requested = False
     total = len(st.session_state.raw_items)
     log_message(f"🎯 Парсинг {total} компаний...")
@@ -680,6 +707,9 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
     
     progress_bar = st.progress(0)
     stats_placeholder = st.empty()
+    table_placeholder = st.empty()
+    export_placeholder = st.empty()
+    st.session_state.enrichment_active = True
     
     if sys.platform == 'win32':
         try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -713,15 +743,18 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
                 try:
                     progress_bar.progress(count / total)
                     stats_placeholder.info(f"📊 {count}/{total}")
+                    # Живая таблица каждые 20 результатов
+                    if count % 20 == 0 and processed_data:
+                        _render_live_table(table_placeholder, export_placeholder, processed_data)
                 except Exception:
                     pass
         except Exception as e:
-            # Сохраняем checkpoint при любом краше
             log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
         
         st.session_state.hunter_data = processed_data
         log_message("=" * 40)
         log_message(f"✅ ГОТОВО: {count} лидов")
+        st.session_state.enrichment_active = False
     
     asyncio.run(run_enrichment())
     play_sound()
@@ -732,7 +765,7 @@ if st.session_state.get('checkpoint_info'):
     cp_results, cp_urls, cp_params, cp_raw, cp_names = st.session_state.checkpoint_info
     if cp_results:
         st.info(f"💾 Найден чекпоинт: {len(cp_results)} обработанных, {len(cp_urls)} URL")
-        if st.button("▶️ Продолжить предыдущую сессию", type="primary", use_container_width=True):
+        if st.button("▶️ Продолжить предыдущую сессию", type="primary", width='stretch'):
             st.session_state.stop_requested = False
             # База — результаты из чекпоинта (уже обогащённые)
             st.session_state.hunter_data = list(cp_results)
@@ -754,6 +787,9 @@ if st.session_state.get('checkpoint_info'):
                 
                 progress_bar = st.progress(0)
                 stats_placeholder = st.empty()
+                table_placeholder = st.empty()
+                export_placeholder = st.empty()
+                st.session_state.enrichment_active = True
                 
                 if sys.platform == 'win32':
                     try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -787,6 +823,8 @@ if st.session_state.get('checkpoint_info'):
                             try:
                                 progress_bar.progress(count / total)
                                 stats_placeholder.info(f"📊 {count}/{total}")
+                                if count % 20 == 0 and processed_data:
+                                    _render_live_table(table_placeholder, export_placeholder, processed_data)
                             except Exception:
                                 pass
                     except Exception as e:
@@ -795,6 +833,7 @@ if st.session_state.get('checkpoint_info'):
                     st.session_state.hunter_data = list(cp_results) + processed_data
                     log_message("=" * 40)
                     log_message(f"✅ ГОТОВО: {count} новых лидов (всего {len(cp_results) + len(processed_data)})")
+                    st.session_state.enrichment_active = False
                 
                 asyncio.run(run_resume())
                 play_sound()
@@ -805,7 +844,7 @@ if st.session_state.get('checkpoint_info'):
             st.session_state.checkpoint_info = None
             st.rerun()
 
-if col_stop.button("🛑 СТОП", use_container_width=True):
+if col_stop.button("🛑 СТОП", width='stretch'):
     st.session_state.stop_requested = True
     st.rerun()
 
@@ -813,7 +852,7 @@ if col_stop.button("🛑 СТОП", use_container_width=True):
 st.header("3. Результаты")
 if st.session_state.hunter_data:
     df = pd.DataFrame(st.session_state.hunter_data)
-    st.dataframe(df, hide_index=True, use_container_width=True)
+    st.dataframe(df, hide_index=True, width='stretch')
     
     # Статистика
     cols = st.columns(4)
@@ -839,7 +878,7 @@ if st.session_state.hunter_data:
         st.session_state.logs = []
         st.rerun()
 
-with st.expander("📝 Технический лог"):
+with st.expander("📝 Технический лог", expanded=st.session_state.get('enrichment_active', False)):
     st.code("\n".join(st.session_state.logs[::-1]))
 
 # Footer

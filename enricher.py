@@ -696,35 +696,34 @@ async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, channel='chrome')
 
+        async def _do_enrich(item):
+            """Выполняет enrich для одного элемента (без семафора, для wait_for)"""
+            site = (item.get('websites') or [None])[0]
+            try:
+                res = await enrich_site_data(browser, site, item.get('name'), log_func=log_func, use_ai=use_ai, ai_provider=ai_provider, ai_model=ai_model)
+            except asyncio.TimeoutError:
+                if log_func: log_func(f"⏰ Таймаут на {site or '—'}")
+                res = {'site': site or '—', 'phones': '—', 'emails': [], 'VK': '—', 'TG': '—', 'MAX': '—', 'ЛПР': '—'}
+            except Exception as e:
+                if log_func: log_func(f"❌ Ошибка на {site or '—'}: {str(e)[:50]}")
+                res = {'site': site or '—', 'phones': '—', 'emails': [], 'VK': '—', 'TG': '—', 'MAX': '—', 'ЛПР': '—'}
+
+            emails = res.get('emails', [])
+            return {
+                "Компания": item.get('name', '—'),
+                "ЛПР": res.get("ЛПР", "—"),
+                "Телефон": res.get("phones", "—"),
+                "Email": ", ".join(emails[:3]) if emails else "—",
+                "Сайт": res.get("site", "—"),
+                "VK": res.get("VK", "—"),
+                "TG": res.get("TG", "—"),
+                "MAX": res.get("MAX", "—"),
+                "Адрес": item.get('addr', '—'),
+            }
+
         async def sem_enrich(item):
             async with semaphore:
-                site = (item.get('websites') or [None])[0]
-                try:
-                    res = await enrich_site_data(browser, site, item.get('name'), log_func=log_func, use_ai=use_ai, ai_provider=ai_provider, ai_model=ai_model)
-                except Exception as e:
-                    if log_func: log_func(f"❌ Ошибка на {site or '—'}: {str(e)[:50]}")
-                    res = {
-                        'site': site or '—',
-                        'phones': '—',
-                        'emails': [],
-                        'VK': '—',
-                        'TG': '—',
-                        'MAX': '—',
-                        'ЛПР': '—'
-                    }
-
-                emails = res.get('emails', [])
-                return {
-                    "Компания": item.get('name', '—'),
-                    "ЛПР": res.get("ЛПР", "—"),
-                    "Телефон": res.get("phones", "—"),
-                    "Email": ", ".join(emails[:3]) if emails else "—",
-                    "Сайт": res.get("site", "—"),
-                    "VK": res.get("VK", "—"),
-                    "TG": res.get("TG", "—"),
-                    "MAX": res.get("MAX", "—"),
-                    "Адрес": item.get('addr', '—'),
-                }
+                return await asyncio.wait_for(_do_enrich(item), timeout=90)
 
         # Фильтруем уже обработанные
         remaining = []
