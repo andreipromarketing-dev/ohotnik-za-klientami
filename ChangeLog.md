@@ -10,6 +10,12 @@
 - **Сохранение raw_items**: параметры поиска сохраняются в чекпоинт для полного восстановления
 - **Защита от StopException**: `log_message()` обёрнут в try/except, enrichment loop защищён от крашей
 - **UI обёрнут в try/except**: progress bar и stats placeholder не крашат при прерывании
+- **Исправлено дублирование при возобновлении**: `cp_results` больше не дублируются при повторном нажатии "Продолжить"
+
+### Исправления
+
+- **Исправлен `set + set` crash**: `existing + new_emails` заменён на `set(existing) | set(new_emails)` — теперь работает с любыми типами (list, set, ResultSet)
+- **Rate limiting**: семафор снижен с 7 до 4, добавлен рандомизированный delay 0.5-1.5s между запросами — снижает вероятность блокировки DNS провайдером
 
 ### UI — Emil Kowalski Design Engineering
 

@@ -734,10 +734,8 @@ if st.session_state.get('checkpoint_info'):
         st.info(f"💾 Найден чекпоинт: {len(cp_results)} обработанных, {len(cp_urls)} URL")
         if st.button("▶️ Продолжить предыдущую сессию", type="primary", use_container_width=True):
             st.session_state.stop_requested = False
-            # Восстанавливаем данные из чекпоинта
-            existing_data = st.session_state.hunter_data or []
-            existing_data.extend(cp_results)
-            st.session_state.hunter_data = existing_data
+            # База — результаты из чекпоинта (уже обогащённые)
+            st.session_state.hunter_data = list(cp_results)
             
             # Восстанавливаем raw_items из чекпоинта если нет текущих
             if not st.session_state.raw_items and cp_raw:
@@ -761,7 +759,7 @@ if st.session_state.get('checkpoint_info'):
                     try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
                     except Exception: pass
 
-                processed_data = list(st.session_state.hunter_data)
+                processed_data = []
                 search_params = {
                     "ai_provider": st.session_state.ai_provider,
                     "ai_model": st.session_state.ai_model,
@@ -794,9 +792,9 @@ if st.session_state.get('checkpoint_info'):
                     except Exception as e:
                         log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
                     
-                    st.session_state.hunter_data = processed_data
+                    st.session_state.hunter_data = list(cp_results) + processed_data
                     log_message("=" * 40)
-                    log_message(f"✅ ГОТОВО: {count} новых лидов (всего {len(processed_data)})")
+                    log_message(f"✅ ГОТОВО: {count} новых лидов (всего {len(cp_results) + len(processed_data)})")
                 
                 asyncio.run(run_resume())
                 play_sound()

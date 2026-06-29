@@ -1,6 +1,7 @@
 import asyncio
 import html as html_module
 import json
+import random
 import re
 import urllib.parse
 import aiohttp
@@ -546,7 +547,7 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
 
         if log_func: log_func(f"🕸️ {url[:45]}...")
         await page.goto(url, timeout=15000, wait_until="domcontentloaded")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(random.uniform(0.5, 1.5))
 
         # === УРОВЕНЬ 2: Post-fetch проверка на агрегатор ===
         if await _is_aggregator_page(page, company_name, log_func):
@@ -637,7 +638,7 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
             if ai_emails_from_ai:
                 existing = list(res['emails']) if not isinstance(res['emails'], list) else res['emails']
                 new_emails = list(ai_emails_from_ai) if not isinstance(ai_emails_from_ai, list) else ai_emails_from_ai
-                res['emails'] = list(set(existing + new_emails))
+                res['emails'] = list(set(existing) | set(new_emails))
             if ai_vk and res['VK'] == '—':
                 res['VK'] = ai_vk if ai_vk.startswith('http') else f"https://{ai_vk}"
             if ai_telegram and res['TG'] == '—':
@@ -684,7 +685,7 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
 async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model="",
                         processed_urls=None, search_params=None, checkpoint_every=20):
     """Параллельный парсинг сайтов с автосохранением"""
-    semaphore = asyncio.Semaphore(7)
+    semaphore = asyncio.Semaphore(4)
     skip_urls = processed_urls or set()
     results_so_far = []
     search_params = search_params or {}
