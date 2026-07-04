@@ -1,131 +1,43 @@
-# ChangeLog
+# Changelog
 
-## v3.4 (28.06.2026)
+## v3.6 (2026-07-05)
 
-### Автосохранение и возобновление
+### Added
+- **Workflow system** — JSON export/import of search configuration (niche, cities, keywords, markers, limit, exclude list)
+- **AI context in export** — exported JSON includes `ai_context` block (system prompt, task, rules, output format) for LLM fine-tuning
+- **Workflow library** — save/load/delete presets in `~/.ohotnik/workflows/`
+- **Multi-city search** — multiselect from 48 cities + "Вся Россия" checkbox
+- **Exclude keywords filter** — words to filter out from results by name/URL/address (default: тату, пирсинг)
+- **Limit slider** — 20–1000 configurable company limit (default 500)
+- **Workflow override** — when a workflow is active, its keywords/markers/cities/limit/exclude prefill and override manual inputs
+- **Delete feedback** — success message shown after deleting a workflow from library
 
-- **Чекпоинты**: результаты обогащения сохраняются на диск каждые 20 сайтов (`~/.ohotnik/checkpoint.json`)
-- **Кнопка "Продолжить предыдущую сессию"**: при обнаружении чекпоинта показывается кнопка для возобновления
-- **Пропуск обработанных URL**: при возобновлении уже обработанные сайты пропускаются
-- **Сохранение raw_items**: параметры поиска сохраняются в чекпоинт для полного восстановления
-- **Защита от StopException**: `log_message()` обёрнут в try/except, enrichment loop защищён от крашей
-- **UI обёрнут в try/except**: progress bar и stats placeholder не крашат при прерывании
-- **Исправлено дублирование при возобновлении**: фильтр теперь по названию компании (не по URL), т.к. URL может измениться из-за редиректа. Добавлено `company_names` в чекпоинт
+### Fixed
+- **NameError in Export/Save** — workflow expander moved after category/cities/params widgets so all UI variables exist before Export/Save buttons reference them
+- **Dead `seen_urls` set** — removed write-only dedup variable that was never read
+- **Code review fixes** — 10 issues resolved across `search_providers.py`, `app.py`, `workflow.py` (dead code, missing parameters, path sanitization, JSON validation, hardcoded paths, error logging)
 
-### Исправления
+### Changed
+- README updated with workflow documentation and updated file structure
+- `config.py` — added `WORKFLOWS_DIR` constant
 
-- **Исправлен `set + set` crash**: `existing + new_emails` заменён на `set(existing) | set(new_emails)` — теперь работает с любыми типами (list, set, ResultSet)
-- **Rate limiting**: семафор снижен с 7 до 4, добавлен рандомизированный delay 0.5-1.5s между запросами — снижает вероятность блокировки DNS провайдером
+## v3.5 (2026-07-04)
 
-### UI — Emil Kowalski Design Engineering
+- Multi-key failover for Groq API
+- Live table updates during enrichment
+- Timeout fix for slow AI responses
 
-- **Тактильность кнопок**: `scale(0.97)` на `:active` — кнопки «прогибаются» при нажатии
-- **Плавные transitions**: input, select, radio, expander — плавные переходы вместо резких скачков
-- **Hover-эффекты**: кнопки с мятным свечением, expander с плавным подсвечиванием
-- **Фокус ring**: `box-shadow` + `border-color` на фокусе, `outline` на `:focus-visible` для accessibility
-- **Глубина**: `box-shadow` на expander, alerts, dialog — элементы « парят» над фоном
-- **Анимация заголовков**: `fadeInUp` на h1/h2 — плавное появление при загрузке
-- **Progress bar**: `transition: width 300ms ease-out` — плавное заполнение
-- **CSS-переменные**: `--ease-out`, `--dur-fast`, `--shadow-sm` для единообразия
-- **Accessibility**: `@media (prefers-reduced-motion)` — отключает анимации для sensitive users
+## v3.4 (2026-07-03)
 
-### Установлены скиллы
+- Auto-save/resume checkpoints every 20 sites
+- Emil Kowalski UI polish (animations, micro-interactions)
+- Fixed resume duplication bug
+- Fixed `set+set` crash
 
-- **emil-design-eng**: философия дизайн-инженерии от Emil Kowalski (анимации, компоненты, CSS)
-- **review-animations**: ревью анимаций по 10 стандартам (Block/Approve вердикт)
+## v3.3 (2026-06-28)
 
-## v3.3 (26.06.2026)
-
-### Критические исправления
-
-- **Исправлен белый экран**: Streamlit 1.58 был повреждён — 111 JS-файлов (15.2 MB) отсутствовали. Переустановлен `streamlit==1.58.0`
-- **Исправлен `set + set` crash** в enricher.py: `res['emails'] + ai_emails_from_ai` падал когда оба `set`. Теперь оба приводятся к `list`
-- **Исправлен Groq "Не настроен"**: `check_groq()` создавал `headers` с токеном, но не передавал их в `requests.get()`. Добавлен `headers=headers`
-- **Убрана жёсткая блокировка `quick_check_lpr()`**: Раньше если ЛПР не найден в сыром HTML — сайт полностью пропускался. Теперь логирует предупреждение и продолжает парсинг
-- **Повышен порог агрегатора**: `score >= 3` → `score >= 4` —减少了 ложных срабатываний
-
-### Улучшения
-
-- **Сохраняются ВСЕ телефоны**: Раньше только первый (`all_phones[0]`), теперь все уникальные (до 5) через запятую
-- **Кириллические домены больше не блокируются**: Убрана blanket-блокировка `xn--` доменов. В блок-листе только конкретные агрегаторы
-- **Убрано дублирование кода**: `AGGREGATOR_BODY_SIGNALS` и `SINGLE_BUSINESS_SIGNALS` теперь импортируются из `search_providers.py`
-- **Удалены мёртвые константы** из `config.py`: FILTERS, MIN_PAUSE, MAX_PAUSE, MAX_REQUESTS_PER_HOUR, ERROR_429, QUALITY_THRESHOLD, DEFAULT_REGIONS
-- **Заменены bare `except:`** на конкретные исключения (`Exception`, `JSONDecodeError`, `OSError`) во всех файлах
-- **Исправлен sync/async mixing**: `search_website()` теперь использует `aiohttp` вместо `requests`
-- **Исправлен progress bar overflow**: `total_queries` теперь считает primary + secondary маркеры сразу
-- **Упрощены кастомные API**: Неработающие чекбоксы заменены на список сохранённых API
-
-### UI
-
-- Добавлена `.streamlit/config.toml` с тёмной темой (`base = "dark"`)
-- CSS переписан: убраны `[data-theme]` селекторы, используются прямые селекторы
-- Убрана light theme CSS (тёмная тема зафиксирована)
-- Ленивая проверка LM Studio и UncloseAI (проверяются только при выборе)
-- Groq проверяется всегда (быстрый 0.2s)
-
-## v3.2 (25.04.2026)
-
-### Исправления
-
-- Исправлено раскрывающееся меню (три точки) — ограничена ширина 180px, не уходит за экран
-- Добавлена функция `play_sound()` для звукового уведомления после завершения этапов
-- Исправлен несуществующий импорт `base64`
-
-### UI
-
-- Динамическое переключение цвета кнопок ШАГ 1 / ШАГ 2:
-  - До поиска: ШАГ 1 красная, ШАГ 2 серая
-  - После поиска: ШАГ 1 обычная, ШАГ 2 красная
-
-### Рефакторинг
-
-- Удалены неиспользуемые импорты: `random`, `requests`, `os`, `components`
-- Проведен code review — проблем не найдено
-
-## v3.1 (25.04.2026)
-
-### UI / Темы
-
-- Добавлено переключение тем (тёмная/светлая) через встроенный переключатель Streamlit
-- Тёмная тема: фон #012F46, текст белый
-- Светлая тема: фон #F8F9FA, текст тёмный
-- Все кнопки с белым текстом для читаемости
-- Логотип ЮгСпецСети в сайдбаре
-
-### Исправления
-
-- CSS стили адаптированы под обе темы
-- JavaScript синхронизация темы Streamlit с кастомными стилями
-
-## v3.0 (25.04.2026)
-
-### Функционал
-
-- Добавлен выбор AI провайдера (Groq, UncloseAI, LM Studio)
-- Добавлена настройка кастомных API-ключей
-- Добавлено управление API-ключами в сайдбаре
-- Groq выбран по умолчанию (бесплатный)
-
-### UI
-
-- Промо-тема с синим (#012F46) акцентом
-- Карточки параметров с тенями
-- Радио-батоны для выбора провайдера
-
-## v2.0 (xx.xx.2026)
-
-### Функционал
-
-- Добавлен Шаг 2: AI-обогащение (парсинг контактов и поиск ЛПР)
-- Интеграция с Groq, UncloseAI, LM Studio
-- Показ статистики (лиды, с телефонами, с email, найден ЛПР)
-- Экспорт в Excel
-
-## v1.0 (xx.xx.2026)
-
-### Функционал
-
-- Шаг 1: Поиск компаний по нише и городу
-- Интеграция с SearchApi.io
-- Таблица результатов
-- Сохранение в Excel
+- Fixed white screen on startup
+- Groq API status check
+- Aggregator threshold tuning
+- Punycode domain support
+- Progress bar fixes

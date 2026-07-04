@@ -11,6 +11,7 @@ import search_providers
 import json
 import base64
 from pathlib import Path
+import workflow as wf
 from PIL import Image
 
 API_STORE_FILE = Path(__file__).parent / ".api_keys.enc"
@@ -297,6 +298,12 @@ if "checkpoint_info" not in st.session_state:
     # Проверяем наличие чекпоинта при старте
     cp = enricher.load_checkpoint()
     st.session_state.checkpoint_info = cp
+if "workflow" not in st.session_state:
+    st.session_state.workflow = None
+if "workflow_name" not in st.session_state:
+    st.session_state.workflow_name = None
+if "show_import" not in st.session_state:
+    st.session_state.show_import = False
 
 def log_message(msg):
     try:
@@ -535,24 +542,161 @@ with ai_col2:
 st.session_state.ai_provider = ai_provider
 st.session_state.ai_model = ai_model
 
-# Блок выбора аудитории
 st.header("1. Настройка поиска")
 
-c1, c2, c3 = st.columns(3)
+if st.session_state.workflow:
+    wf_name = st.session_state.workflow["workflow"]["name"]
+    st.info(f"📄 Активен воркфлоу: **{wf_name}**. Поля категории, городов и лимита предзаполнены.")
+
+# ============================================================================
+# КАТЕГОРИЯ
+# ============================================================================
+niche_val_from_wf = st.session_state.workflow.get("search", {}) if st.session_state.workflow else {}
+
+c1, c2 = st.columns(2)
 with c1:
-    manual_niche = st.text_input("Категория бизнеса:", placeholder="Введите или выберите ниже", key="niche_inp")
-    # Selectbox с опцией "Выбрать из списка..." как первой
+    manual_niche = st.text_input("Категория бизнеса:", placeholder="Введите или выберите ниже",
+                                 value="", key="niche_inp")
     niche_options = ["Выбрать из списка...", *config.HUNTER_QUERIES.keys()]
+    wf_kw = (niche_val_from_wf.get("keywords", [""]) or [""])[0]
     niche_idx = st.selectbox("Или выберите:", niche_options, key="niche_sel", label_visibility="collapsed")
     niche = "" if niche_idx == "Выбрать из списка..." else niche_idx
-with c2:
-    manual_city = st.text_input("Город:", placeholder="Введите или выберите ниже", key="city_inp")
-    # Selectbox с опцией "Выбрать из списка..." как первой
-    city_options = ["Выбрать из списка...", *config.REGION_COORDS.keys()]
-    city_idx = st.selectbox("Или выберите:", city_options, key="city_sel", label_visibility="collapsed")
-    region = "" if city_idx == "Выбрать из списка..." else city_idx
-with c3:
-    limit = st.slider("Кол-во компаний:", 10, 500, 50, 10)
+
+# ============================================================================
+# ГОРОДА
+# ============================================================================
+wf_cities = niche_val_from_wf.get("cities", []) if st.session_state.workflow else []
+all_city_names = list(config.REGION_COORDS.keys())
+
+default_cities = [c for c in wf_cities if c in all_city_names]
+selected_cities = st.multiselect(
+    "Города:", all_city_names,
+    default=default_cities,
+    key="city_multiselect"
+)
+
+whole_russia = st.checkbox(
+    "Вся Россия (поиск без города)",
+    value=st.session_state.workflow.get("search", {}).get("cities") == ["вся россия"] if st.session_state.workflow else False,
+    key="whole_russia"
+)
+
+# ============================================================================
+# ПАРАМЕТРЫ
+# ============================================================================
+wf_limit = niche_val_from_wf.get("limit", 500) if st.session_state.workflow else 500
+limit_val = st.slider("Кол-во компаний:", 20, 1000, wf_limit, key="limit_slider")
+
+wf_exclude = niche_val_from_wf.get("exclude_keywords", []) if st.session_state.workflow else ["тату", "пирсинг"]
+exclude_input = st.text_input(
+    "Исключить слова (через запятую):",
+    value=", ".join(wf_exclude),
+    key="exclude_input"
+)
+exclude_keywords = [x.strip() for x in exclude_input.split(",") if x.strip()]
+
+# ============================================================================
+# WORKFLOW — импорт/экспорт/библиотека
+# ============================================================================
+with st.expander("📦 Workflow (импорт/экспорт/библиотека)", expanded=False):
+    col_w1, col_w2, col_w3 = st.columns([1, 1, 1])
+
+    # Export
+    if col_w1.button("📤 Export JSON", use_container_width=True):
+        if st.session_state.workflow:
+            export_wf = wf.Workflow(st.session_state.workflow)
+        else:
+            current_niche = manual_niche.strip() if manual_niche.strip() else niche
+            niche_data = config.HUNTER_QUERIES.get(current_niche, {})
+            export_wf = wf.Workflow.build_from_current(
+                current_niche, niche_data, selected_cities,
+                limit_val,
+                st.session_state.get('ai_provider', 'Groq'),
+                st.session_state.get('ai_model', '')
+            )
+        json_str = export_wf.to_json(include_ai_context=True, user_prompt="")
+        st.download_button(
+            "💾 Скачать JSON", data=json_str,
+            file_name=f"{export_wf.data['workflow']['name']}.json",
+            mime="application/json", key="dl_export"
+        )
+
+    # Import
+    if col_w2.button("📥 Import JSON", use_container_width=True):
+        st.session_state.show_import = True
+
+    if col_w3.button("✕ Сбросить", use_container_width=True):
+        st.session_state.workflow = None
+        st.session_state.workflow_name = None
+        st.session_state.show_import = False
+        st.rerun()
+
+    if st.session_state.show_import:
+        import_tabs = st.tabs(["📁 Загрузить файл", "📋 Вставить текст"])
+        with import_tabs[0]:
+            uploaded = st.file_uploader("Выберите JSON файл", type=["json"], key="wf_file")
+            if uploaded:
+                try:
+                    content = uploaded.read().decode("utf-8")
+                    wf_obj = wf.Workflow.from_json(content)
+                    st.session_state.workflow = wf_obj.data
+                    st.success(f"✅ Загружен: {wf_obj.data['workflow']['name']}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Ошибка: {e}")
+        with import_tabs[1]:
+            text_json = st.text_area("Вставьте JSON воркфлоу:", height=200, key="wf_text")
+            if st.button("Применить", key="apply_import_text"):
+                if text_json.strip():
+                    try:
+                        wf_obj = wf.Workflow.from_json(text_json)
+                        st.session_state.workflow = wf_obj.data
+                        st.success(f"✅ Загружен: {wf_obj.data['workflow']['name']}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Ошибка: {e}")
+
+    # Library save
+    col_s1, col_s2 = st.columns([3, 1])
+    lib_name = col_s1.text_input("Имя для сохранения:", placeholder="msk_bild_1", key="lib_save_name")
+    if col_s2.button("💾 Сохранить", use_container_width=True):
+        if lib_name.strip():
+            if st.session_state.workflow:
+                save_wf = wf.Workflow(st.session_state.workflow)
+            else:
+                current_niche = (manual_niche.strip() if manual_niche.strip() else niche) or "custom"
+                niche_data = config.HUNTER_QUERIES.get(current_niche, {})
+                save_wf = wf.Workflow.build_from_current(
+                    current_niche, niche_data, selected_cities,
+                    limit_val,
+                    st.session_state.get('ai_provider', 'Groq'),
+                    st.session_state.get('ai_model', '')
+                )
+            save_wf.save(lib_name.strip())
+            st.success(f"✅ Сохранён: {lib_name}")
+            st.rerun()
+
+    # Library load
+    library = wf.Workflow.list_library()
+    if library:
+        lib_options = {w["name"]: w for w in library}
+        lib_keys = list(lib_options.keys())
+        selected_lib = st.selectbox("📚 Загрузить из библиотеки", [""] + lib_keys, key="lib_select")
+        if selected_lib:
+            col_l1, col_l2 = st.columns([1, 1])
+            if col_l1.button("📂 Загрузить", use_container_width=True):
+                try:
+                    wf_obj = wf.Workflow.load(selected_lib)
+                    st.session_state.workflow = wf_obj.data
+                    st.session_state.workflow_name = selected_lib
+                    st.success(f"✅ Загружен: {selected_lib}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ {e}")
+            if col_l2.button("🗑️ Удалить", use_container_width=True):
+                wf.Workflow.delete(selected_lib)
+                st.success(f"🗑️ Удалён: {selected_lib}")
+                st.rerun()
 
 st.header("2. Управление")
 if not config.SEARCHAPI_API_KEY:
@@ -569,118 +713,144 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
     st.session_state.stop_requested = False
     st.session_state.raw_items = []
     st.session_state.hunter_data = []
-    
-    # Определяем что используем: ручной ввод имеет приоритет над выбором из списка
-    current_city = manual_city.strip() if manual_city.strip() else region
+
+    # Определяем категорию
     current_niche = manual_niche.strip() if manual_niche.strip() else niche
-    
-    # Проверка что пользователь что-то выбрал или ввёл
-    if not current_city:
-        st.error("❌ Укажите город (введите или выберите из списка)")
-        st.stop()
     if not current_niche:
         st.error("❌ Укажите категорию (введите или выберите из списка)")
         st.stop()
-    
-    log_message(f"🔍 DEBUG: current_city='{current_city}', current_niche='{current_niche}'")
-    
-    # Определяем ключевые слова и маркеры
-    if manual_niche.strip():
-        # Кастомная ниша — одно ключевое слово + стандартные маркеры
+    log_message(f"🎯 Категория: {current_niche}")
+
+    # Определяем keywords и markers из workflow или конфига
+    if st.session_state.workflow:
+        sw = st.session_state.workflow["search"]
+        final_keywords = sw.get("keywords", [current_niche])
+        primary_markers = sw.get("primary_markers", config.PRIMARY_MARKERS)
+        secondary_markers = sw.get("secondary_markers", config.SECONDARY_MARKERS)
+        final_markers = primary_markers + secondary_markers
+        log_message(f"📄 Workflow: {st.session_state.workflow['workflow']['name']}")
+    elif manual_niche.strip():
         final_keywords = [manual_niche.strip()]
-        final_markers = config.PRIMARY_MARKERS + config.SECONDARY_MARKERS
+        primary_markers = config.PRIMARY_MARKERS
+        secondary_markers = config.SECONDARY_MARKERS
+        final_markers = primary_markers + secondary_markers
     else:
-        # Выбор из списка — новая структура с маркерами
         niche_val = config.HUNTER_QUERIES.get(niche, {})
         if isinstance(niche_val, dict):
             final_keywords = niche_val.get("keywords", [])
-            final_markers = config.PRIMARY_MARKERS + config.SECONDARY_MARKERS
         else:
-            # Фallback для старой структуры (если вдруг осталась)
             final_keywords = niche_val if isinstance(niche_val, list) else [niche_val]
-            final_markers = config.PRIMARY_MARKERS + config.SECONDARY_MARKERS
-    
-    log_message(f"🎯 Категория: {current_niche}")
+        primary_markers = config.PRIMARY_MARKERS
+        secondary_markers = config.SECONDARY_MARKERS
+        final_markers = primary_markers + secondary_markers
+
+    # Определяем города
+    if whole_russia:
+        target_cities = ["вся россия"]
+    elif selected_cities:
+        target_cities = list(selected_cities)
+    else:
+        st.error("❌ Выберите хотя бы один город или включите 'Вся Россия'")
+        st.stop()
+
     log_message(f"📝 Ключевых слов: {len(final_keywords)}, маркеров: {len(final_markers)}")
-    
+    log_message(f"🏙️ Городов: {len(target_cities)}")
+
     seen_names = set()
-    seen_urls = set()
     results = []
-    
-    # Placeholder для live-лога
+
     log_placeholder = st.empty()
     progress_bar = st.progress(0)
-    
+
     def live_log(msg):
         log_message(msg)
         log_placeholder.info(msg)
-    
+
     async def run_search():
-        total_queries = len(final_keywords) * (len(config.PRIMARY_MARKERS) + len(config.SECONDARY_MARKERS))
+        total_phase1 = len(target_cities) * len(final_keywords) * len(primary_markers)
+        total_phase2 = len(target_cities) * len(final_keywords) * len(secondary_markers)
+        total_queries = total_phase1 + total_phase2
         query_count = 0
-        
-        # Фаза 1: Primary маркеры (официальный сайт, контакты, реквизиты, телефон, ООО)
-        primary_markers = config.PRIMARY_MARKERS
-        for keyword in final_keywords:
+
+        for city in target_cities:
             if st.session_state.stop_requested: break
-            for marker in primary_markers:
-                if st.session_state.stop_requested: break
-                query = f"{keyword} {current_city} {marker}".strip()
-                query_count += 1
-                live_log(f"📡 [{query_count}/{total_queries}] {query}")
-                progress_bar.progress(query_count / total_queries)
-                
-                batch = await search_providers.fetch_companies(query, limit, log_func=live_log)
-                for item in batch:
-                    name = item.get('name', '').strip().lower()
-                    url = (item.get('websites') or [''])[0]
-                    if name and name not in seen_names:
-                        seen_names.add(name)
-                        if url:
-                            seen_urls.add(url)
-                        results.append(item)
-                
-                if len(results) >= limit:
-                    live_log(f"✅ Достигнут лимит: {len(results)} компаний")
-                    break
-            if len(results) >= limit:
-                break
-        
-        # Фаза 2: Secondary маркеры (только если мало результатов)
-        if len(results) < limit:
-            secondary_markers = config.SECONDARY_MARKERS
-            live_log(f"🔄 Мало результатов ({len(results)}), добавляем secondary маркеры...")
+            if city == "вся россия":
+                city_label = "Вся Россия"
+                live_log(f"🏙️ Поиск по всей России...")
+            else:
+                city_label = city
+                live_log(f"🏙️ Город: {city}...")
+
+            # Фаза 1: Primary
             for keyword in final_keywords:
                 if st.session_state.stop_requested: break
-                for marker in secondary_markers:
+                for marker in primary_markers:
                     if st.session_state.stop_requested: break
-                    query = f"{keyword} {current_city} {marker}".strip()
+                    if city == "вся россия":
+                        query = f"{keyword} {marker}".strip()
+                    else:
+                        query = f"{keyword} {city} {marker}".strip()
                     query_count += 1
                     live_log(f"📡 [{query_count}/{total_queries}] {query}")
                     progress_bar.progress(min(query_count / total_queries, 1.0))
-                    
-                    batch = await search_providers.fetch_companies(query, limit, log_func=live_log)
+
+                    batch = await search_providers.fetch_companies(
+                        query, limit_val, log_func=live_log, exclude_keywords=exclude_keywords
+                    )
                     for item in batch:
                         name = item.get('name', '').strip().lower()
                         url = (item.get('websites') or [''])[0]
                         if name and name not in seen_names:
                             seen_names.add(name)
-                            if url:
-                                seen_urls.add(url)
+                            item["city"] = city_label
                             results.append(item)
-                    
-                    if len(results) >= limit:
-                        live_log(f"✅ Достигнут лимит: {len(results)} компаний")
+
+                    if len(results) >= limit_val:
                         break
-                if len(results) >= limit:
+                if len(results) >= limit_val:
                     break
-        
+            if len(results) >= limit_val:
+                break
+
+            # Фаза 2: Secondary (если мало)
+            if len(results) < limit_val:
+                live_log(f"🔄 Добавляем secondary маркеры ({len(results)}/{limit_val})...")
+                for keyword in final_keywords:
+                    if st.session_state.stop_requested: break
+                    for marker in secondary_markers:
+                        if st.session_state.stop_requested: break
+                        if city == "вся россия":
+                            query = f"{keyword} {marker}".strip()
+                        else:
+                            query = f"{keyword} {city} {marker}".strip()
+                        query_count += 1
+                        live_log(f"📡 [{query_count}/{total_queries}] {query}")
+                        progress_bar.progress(min(query_count / total_queries, 1.0))
+
+                        batch = await search_providers.fetch_companies(
+                            query, limit_val, log_func=live_log, exclude_keywords=exclude_keywords
+                        )
+                        for item in batch:
+                            name = item.get('name', '').strip().lower()
+                            url = (item.get('websites') or [''])[0]
+                            if name and name not in seen_names:
+                                seen_names.add(name)
+                                item["city"] = city_label
+                                results.append(item)
+                        if len(results) >= limit_val:
+                            break
+                    if len(results) >= limit_val:
+                        break
+
+                if len(results) >= limit_val:
+                    break
+
         progress_bar.progress(1.0)
-    
+
     with st.spinner("🔍 Идёт поиск компаний..."):
         asyncio.run(run_search())
-    
-    st.session_state.raw_items = results[:limit]
+
+    st.session_state.raw_items = results[:limit_val]
     st.session_state.hunter_data = [{
         "Компания": x.get('name', '—'),
         "Сайт": (x.get('websites') or [None])[0] or "—",
@@ -691,8 +861,9 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
         "Email": "—",
         "ЛПР": "—",
         "Адрес": x.get('addr', '—'),
+        "Город": x.get('city', '—'),
     } for x in st.session_state.raw_items]
-    
+
     if results:
         st.success(f"✅ Успешно собрано {len(st.session_state.raw_items)} компаний. Переходите к обогащению!")
     else:

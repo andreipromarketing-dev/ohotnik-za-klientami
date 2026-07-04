@@ -291,7 +291,27 @@ def is_aggregator_content(page_text, company_name=""):
 # SEARCH ENGINE
 # ============================================================================
 
-async def search_duckduckgo(query, limit=20, log_func=None):
+def _filter_excluded(items, exclude_keywords):
+    """Фильтрует результаты по исключающим словам"""
+    if not exclude_keywords:
+        return items
+    filtered = []
+    for item in items:
+        name = (item.get("name", "") or "").lower()
+        url = ((item.get("websites") or [""])[0] or "").lower()
+        addr = (item.get("addr", "") or "").lower()
+        combined = f"{name} {url} {addr}"
+        skip = False
+        for ex in exclude_keywords:
+            if ex.lower() in combined:
+                skip = True
+                break
+        if not skip:
+            filtered.append(item)
+    return filtered
+
+
+async def search_duckduckgo(query, limit=20, log_func=None, exclude_keywords=None):
     """Поиск через DuckDuckGo с фильтрацией агрегаторов"""
     log_msg = log_func or (lambda m: print(f"DEBUG: {m}"))
     log_msg(f"DuckDuckGo search for: {query}")
@@ -332,6 +352,7 @@ async def search_duckduckgo(query, limit=20, log_func=None):
                 if len(items) >= limit:
                     break
 
+            items = _filter_excluded(items, exclude_keywords)
             log_msg(f"DuckDuckGo: {len(items)} сайтов прошли фильтр (заблокировано: {blocked_count})")
             return items
 
@@ -363,19 +384,20 @@ async def search_duckduckgo(query, limit=20, log_func=None):
                     })
                 if len(items) >= limit:
                     break
+        items = _filter_excluded(items, exclude_keywords)
     except Exception as e:
         log_msg(f"DuckDuckGo fallback error: {e}")
 
     log_msg(f"DuckDuckGo найдено: {len(items)} результатов")
     return items
 
-async def search_searchapi(query, limit=20, log_func=None):
+async def search_searchapi(query, limit=20, log_func=None, exclude_keywords=None):
     """Поиск через SearchApi.io (если есть ключ)"""
     log_msg = log_func or (lambda m: print(f"DEBUG: {m}"))
 
     if not config.SEARCHAPI_API_KEY:
         log_msg("SearchApi Key missing - используем DuckDuckGo")
-        return await search_duckduckgo(query, limit, log_func)
+        return await search_duckduckgo(query, limit, log_func, exclude_keywords)
 
     known_regions = list(config.REGION_COORDS.keys())
     query_lower = query.lower()
@@ -426,14 +448,16 @@ async def search_searchapi(query, limit=20, log_func=None):
                         "addr": res.get("address", "—")
                     })
             return items
+            items = _filter_excluded(items, exclude_keywords)
+            return items
         else:
             log_msg(f"SearchApi error {resp.status_code}: {resp.text[:200]} - fallback")
-            return await search_duckduckgo(query, limit, log_func)
+            return await search_duckduckgo(query, limit, log_func, exclude_keywords)
     except Exception as e:
         log_msg(f"SearchApi exception: {e} - fallback to DuckDuckGo")
-        return await search_duckduckgo(query, limit, log_func)
+        return await search_duckduckgo(query, limit, log_func, exclude_keywords)
 
-async def fetch_companies(query, limit=20, log_func=None):
+async def fetch_companies(query, limit=20, log_func=None, exclude_keywords=None):
     """Поиск компаний - основная функция"""
     log_msg = log_func or (lambda m: print(f"DEBUG: {m}"))
-    return await search_searchapi(query, limit, log_msg)
+    return await search_searchapi(query, limit, log_msg, exclude_keywords)

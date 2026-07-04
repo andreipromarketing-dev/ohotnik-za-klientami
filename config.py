@@ -455,6 +455,9 @@ HUNTER_QUERIES = {
     },
 }
 
+# Директория для библиотеки воркфлоу
+WORKFLOWS_DIR = os.path.join(os.path.expanduser("~"), ".ohotnik", "workflows")
+
 # === ЮГСПЕЦСЕТИ ===
 AGENCY_NAME = "ЮгСпецСети"
 AGENCY_TAGLINE = "Нейропродавец | Нейроассистент | AI для бизнеса"

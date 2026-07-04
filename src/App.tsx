@@ -19,8 +19,15 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [limit, setLimit] = useState(100);
   const [results, setResults] = useState<any[]>([]);
+  const [selectedNiche, setSelectedNiche] = useState(NICHES[0]);
+  const [customNiche, setCustomNiche] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]);
+  const [customCity, setCustomCity] = useState('');
 
   // Simulation logic for the UI preview
+  const city = customCity || 'Ялта';
+  const niche = customNiche || selectedNiche;
+  
   useEffect(() => {
     let interval: any;
     if (isParsing && progress < limit) {
@@ -32,8 +39,8 @@ export default function App() {
           status,
           name: `Бизнес Объект #${prev.length + 1}`,
           phone: status !== '❄️ Холодный' ? `+7 (9${Math.floor(Math.random()*90)+10}) ${Math.floor(Math.random()*900)+100}-XX-XX` : 'Нет',
-          category: 'Отели',
-          city: 'Ялта',
+          category: niche,
+          city: city,
           source: 'Авито',
           date: new Date().toLocaleTimeString()
         }, ...prev]);
@@ -75,12 +82,22 @@ export default function App() {
               
               <div className="space-y-3">
                 <label className="block text-sm font-medium text-slate-700">Целевая ниша</label>
-                <select className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <select 
+                  value={selectedNiche} 
+                  onChange={(e) => setSelectedNiche(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
                   {NICHES.map(n => <option key={n}>{n}</option>)}
                 </select>
                 
                 <label className="block text-sm font-medium text-slate-700 mt-4">Своя ниша (опционально)</label>
-                <input type="text" placeholder="Например: Барбершопы" className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <input 
+                  type="text" 
+                  placeholder="Например: Барбершопы"
+                  value={customNiche}
+                  onChange={(e) => setCustomNiche(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                />
               </div>
             </div>
 
@@ -93,9 +110,24 @@ export default function App() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Регион</label>
-                  <select className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <select 
+                    value={selectedRegion}
+                    onChange={(e) => setSelectedRegion(e.target.value)}
+                    className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
                     {REGIONS.map(n => <option key={n}>{n}</option>)}
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Свой город (опционально)</label>
+                  <input 
+                    type="text" 
+                    placeholder="Например: Ялта, Сочи"
+                    value={customCity}
+                    onChange={(e) => setCustomCity(e.target.value)}
+                    className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  />
                 </div>
 
                 <div>
@@ -147,7 +179,7 @@ export default function App() {
                   <Pause size={18} /> Пауза
                 </button>
                 <button 
-                  onClick={() => {setIsParsing(false); setProgress(0); setResults([]);}}
+                  onClick={() => {setIsParsing(false); setProgress(0); setResults([]); setSelectedNiche(NICHES[0]); setCustomNiche(''); setSelectedRegion(REGIONS[0]); setCustomCity('');}}
                   className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2.5 rounded-xl font-medium transition-colors"
                 >
                   <Square size={18} /> Стоп
