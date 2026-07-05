@@ -141,11 +141,6 @@ input:focus-visible, textarea:focus-visible {
     border-color: #E8F9EE !important;
     box-shadow: 0 0 0 1px #E8F9EE !important;
 }
-[data-baseweb="select"] [data-baseweb="popover"] {
-    max-width: 420px !important;
-    min-width: 280px !important;
-    width: auto !important;
-}
 [data-baseweb="select"] span[data-baseweb="tag"] {
     background: #013a5c !important;
     color: #E8F9EE !important;
@@ -234,11 +229,34 @@ div[role="menu"], div[role="dialog"] {
     background: #012F46 !important;
     border: 1px solid #024d82 !important;
     box-shadow: var(--shadow-md) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+}
+
+/* Меню (контекстные, не мультиселект) — фиксированная ширина */
+[data-baseweb="menu"],
+[role="menu"], div[role="menu"] {
     width: 180px !important;
     min-width: 180px !important;
     max-width: 180px !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
+}
+
+/* Мультиселект и селект — ширина по содержимому */
+[data-baseweb="popover"]:has([role="listbox"]) {
+    min-width: 280px !important;
+    max-width: 480px !important;
+    width: auto !important;
+}
+
+[data-baseweb="popover"] input {
+    color: #ffffff !important;
+    background: #024d82 !important;
+}
+[data-baseweb="popover"] label {
+    color: #ffffff !important;
+}
+[data-baseweb="popover"] label span {
+    color: #ffffff !important;
 }
 [data-baseweb="menu"] *, [role="menu"] *, [role="menuitem"] {
     color: #ffffff !important;
