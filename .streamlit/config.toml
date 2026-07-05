@@ -5,3 +5,6 @@ backgroundColor = "#012F46"
 secondaryBackgroundColor = "#013a5c"
 textColor = "#ffffff"
 font = "sans serif"
+
+[global]
+disableKeyboardShortcuts = true
