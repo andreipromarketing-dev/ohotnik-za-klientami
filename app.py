@@ -10,6 +10,8 @@ import enricher
 import search_providers
 import json
 import base64
+import os
+import subprocess
 from pathlib import Path
 import workflow as wf
 from PIL import Image
@@ -125,7 +127,7 @@ input:focus-visible, textarea:focus-visible {
     outline-offset: 2px !important;
 }
 
-/* --- Select --- */
+/* --- Select / Multiselect --- */
 .stSelectbox > div > div,
 [data-baseweb="select"] {
     background: #024d82 !important;
@@ -138,6 +140,22 @@ input:focus-visible, textarea:focus-visible {
 [data-baseweb="select"]:focus-within {
     border-color: #E8F9EE !important;
     box-shadow: 0 0 0 1px #E8F9EE !important;
+}
+[data-baseweb="select"] [data-baseweb="popover"] {
+    max-width: 420px !important;
+    min-width: 280px !important;
+    width: auto !important;
+}
+[data-baseweb="select"] span[data-baseweb="tag"] {
+    background: #013a5c !important;
+    color: #E8F9EE !important;
+}
+[data-baseweb="select"] span[data-baseweb="tag"] * {
+    color: #E8F9EE !important;
+    fill: #E8F9EE !important;
+}
+[data-baseweb="select"] input::placeholder {
+    color: #b0c4d4 !important;
 }
 
 /* --- Radio: smooth toggle --- */
@@ -304,6 +322,8 @@ if "workflow_name" not in st.session_state:
     st.session_state.workflow_name = None
 if "show_import" not in st.session_state:
     st.session_state.show_import = False
+if "confirm_delete_lib" not in st.session_state:
+    st.session_state.confirm_delete_lib = None
 
 def log_message(msg):
     try:
@@ -587,7 +607,7 @@ whole_russia = st.checkbox(
 wf_limit = niche_val_from_wf.get("limit", 500) if st.session_state.workflow else 500
 limit_val = st.slider("Кол-во компаний:", 20, 1000, wf_limit, key="limit_slider")
 
-wf_exclude = niche_val_from_wf.get("exclude_keywords", []) if st.session_state.workflow else ["тату", "пирсинг"]
+wf_exclude = niche_val_from_wf.get("exclude_keywords", []) if st.session_state.workflow else []
 exclude_input = st.text_input(
     "Исключить слова (через запятую):",
     value=", ".join(wf_exclude),
@@ -615,6 +635,7 @@ with st.expander("📦 Workflow (импорт/экспорт/библиотек�
                 st.session_state.get('ai_model', '')
             )
         json_str = export_wf.to_json(include_ai_context=True, user_prompt="")
+        st.code(json_str, language="json")
         st.download_button(
             "💾 Скачать JSON", data=json_str,
             file_name=f"{export_wf.data['workflow']['name']}.json",
@@ -683,7 +704,7 @@ with st.expander("📦 Workflow (импорт/экспорт/библиотек�
         lib_keys = list(lib_options.keys())
         selected_lib = st.selectbox("📚 Загрузить из библиотеки", [""] + lib_keys, key="lib_select")
         if selected_lib:
-            col_l1, col_l2 = st.columns([1, 1])
+            col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
             if col_l1.button("📂 Загрузить", use_container_width=True):
                 try:
                     wf_obj = wf.Workflow.load(selected_lib)
@@ -694,9 +715,28 @@ with st.expander("📦 Workflow (импорт/экспорт/библиотек�
                 except Exception as e:
                     st.error(f"❌ {e}")
             if col_l2.button("🗑️ Удалить", use_container_width=True):
-                wf.Workflow.delete(selected_lib)
-                st.success(f"🗑️ Удалён: {selected_lib}")
+                st.session_state.confirm_delete_lib = selected_lib
                 st.rerun()
+
+            # Confirm delete dialog
+            if st.session_state.confirm_delete_lib == selected_lib:
+                st.warning(f"🗑️ Удалить воркфлоу **«{selected_lib}»**?")
+                cc1, cc2 = st.columns(2)
+                if cc1.button("Да, удалить", use_container_width=True):
+                    wf.Workflow.delete(selected_lib)
+                    st.session_state.confirm_delete_lib = None
+                    st.rerun()
+                if cc2.button("Отмена", use_container_width=True):
+                    st.session_state.confirm_delete_lib = None
+                    st.rerun()
+
+            if col_l3.button("📂 Открыть папку", use_container_width=True):
+                folder = Path(config.WORKFLOWS_DIR).expanduser().resolve()
+                folder.mkdir(parents=True, exist_ok=True)
+                if sys.platform == "win32":
+                    subprocess.Popen(["explorer", str(folder)])
+                else:
+                    subprocess.Popen(["xdg-open", str(folder)])
 
 st.header("2. Управление")
 if not config.SEARCHAPI_API_KEY:
@@ -931,12 +971,13 @@ if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled
     play_sound()
     st.success("✅ Парсинг + AI завершён!")
 
-# Кнопка "Продолжить предыдущую сессию"
+# Кнопки "Продолжить" / "Удалить" предыдущую сессию
 if st.session_state.get('checkpoint_info'):
     cp_results, cp_urls, cp_params, cp_raw, cp_names = st.session_state.checkpoint_info
     if cp_results:
         st.info(f"💾 Найден чекпоинт: {len(cp_results)} обработанных, {len(cp_urls)} URL")
-        if st.button("▶️ Продолжить предыдущую сессию", type="primary", width='stretch'):
+        cc_cp1, cc_cp2 = st.columns(2)
+        if cc_cp1.button("▶️ Продолжить предыдущую сессию", type="primary", use_container_width=True):
             st.session_state.stop_requested = False
             # База — результаты из чекпоинта (уже обогащённые)
             st.session_state.hunter_data = list(cp_results)
@@ -1014,6 +1055,11 @@ if st.session_state.get('checkpoint_info'):
             enricher.delete_checkpoint()
             st.session_state.checkpoint_info = None
             st.rerun()
+
+    if cc_cp2.button("🗑️ Удалить и начать заново", use_container_width=True):
+        enricher.delete_checkpoint()
+        st.session_state.checkpoint_info = None
+        st.rerun()
 
 if col_stop.button("🛑 СТОП", width='stretch'):
     st.session_state.stop_requested = True
