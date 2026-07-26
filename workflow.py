@@ -140,7 +140,7 @@ class Workflow:
                 "secondary_markers": ["о компании", "email", "ИП"],
                 "cities": cities if isinstance(cities, list) else [cities],
                 "limit": limit or 500,
-                "exclude_keywords": ["тату", "пирсинг"],
+                "exclude_keywords": [],
             },
             "enrichment": {
                 "ai_provider": ai_provider,

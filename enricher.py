@@ -227,6 +227,48 @@ SOCIAL_DOMAINS = {
     "max.ru": "MAX",
 }
 
+# Домены email-провайдеров — не превращать в Telegram
+EMAIL_PROVIDER_DOMAINS = {
+    'gmail', 'yandex', 'mail', 'rambler', 'yahoo', 'outlook', 'hotmail',
+    'icloud', 'bk', 'inbox', 'list', 'internet', 'proton', 'live', 'msn',
+    'aol', 'zoho', 'yandex-team', 'email', 'inbox', 'list', 'pochta',
+}
+
+
+def _is_valid_phone(p: str) -> bool:
+    """Проверяет, похож ли номер на реальный телефон (не мусор)"""
+    cleaned = re.sub(r'[\s\-\(\)]', '', p)
+    digits = re.sub(r'\D', '', cleaned)
+    if cleaned.lstrip().startswith('-'):
+        return False
+    if len(digits) < 6:
+        return False
+    return True
+
+
+def _smart_extract_text(main_text: str) -> str:
+    """Извлекает релевантные части текста: шапка + подвал + зоны с ключевыми словами"""
+    if not main_text:
+        return ""
+    # 20% сверху и снизу, но минимум 300 символов каждая часть
+    n = len(main_text)
+    top_pct = max(int(n * 0.2), min(300, n // 2))
+    bottom_pct = max(int(n * 0.2), min(300, n // 2))
+    parts = [main_text[:top_pct], main_text[-bottom_pct:]]
+    # Если ключевые слова в середине — захватываем ±500
+    keywords = ['директор', 'гендиректор', 'учредитель', 'руководство',
+                'адрес', 'контакты', 'телефон', 'email', 'офис', 'реквизиты']
+    mid = main_text[top_pct:-bottom_pct] if n > top_pct + bottom_pct else ""
+    for kw in keywords:
+        idx = mid.lower().find(kw)
+        if idx != -1:
+            start = max(0, top_pct + idx - 300)
+            end = min(n, top_pct + idx + len(kw) + 400)
+            parts.append(main_text[start:end])
+            break
+    return "\n".join(sorted(set(parts), key=len, reverse=True))[:6500]
+
+
 EMAIL_BLACKLIST = [
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
     "sentry", "wixpress", "webpack", "example.com",
@@ -388,6 +430,7 @@ async def _extract_contacts_from_page(page, log_func=None):
         phones = re.findall(PHONE_REGEX, text or "")
     if not phones:
         phones = re.findall(PHONE_REGEX, html_decoded)
+    phones = [p for p in phones if _is_valid_phone(p)]
 
     # === SOCIAL LINKS ===
     # 1) href ссылки
@@ -414,10 +457,21 @@ async def _extract_contacts_from_page(page, log_func=None):
         tg_links.add(link)
 
     # 3) @username упоминания в тексте (_potential_ Telegram)
+    # Сначала ищем email-адреса, чтобы не создать tg-ссылки из них
+    email_usernames = set()
+    for email in re.findall(EMAIL_REGEX, text or ""):
+        local_part = email.split('@')[0]
+        if len(local_part) >= 4:
+            email_usernames.add(local_part.lower())
+        domain = email.split('@')[1].split('.')[0]
+        email_usernames.add(domain.lower())
+
     mentions = re.findall(r'@\w{4,}', text or "")
     skip_mentions = {'@telegram', '@github', '@twitter', '@instagram', '@facebook', '@youtube'}
+    skip_mentions.update(f'@{d}' for d in EMAIL_PROVIDER_DOMAINS)
     for m in mentions:
-        if m.lower() not in skip_mentions:
+        username = m.lstrip('@').lower()
+        if m.lower() not in skip_mentions and username not in email_usernames:
             tg_links.add(f"https://t.me/{m.lstrip('@')}")
 
     # 4) Ссылки в footer/header — часто содержат соцсети
@@ -515,7 +569,8 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         'VK': '—',
         'TG': '—',
         'MAX': '—',
-        'ЛПР': '—'
+        'ЛПР': '—',
+        'addr': ''
     }
 
     if not url or "http" not in url:
@@ -606,7 +661,6 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
     # === ШАГ 3: AI анализ ===
     ai_result = None
     if use_ai and AI_AVAILABLE:
-        # Собираем текст со всех загруженных страниц для AI
         combined_text = ""
         try:
             context2 = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
@@ -614,7 +668,27 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
             await page2.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", lambda route: route.abort())
             await page2.goto(url, timeout=12000, wait_until="domcontentloaded")
             await asyncio.sleep(0.3)
-            combined_text = await page2.evaluate("() => document.body.innerText")
+            main_text = await page2.evaluate("() => document.body.innerText")
+            combined_text = _smart_extract_text(main_text)
+            # Пробуем контактные страницы — их текст короткий, добавляем целиком
+            contact_texts = []
+            from urllib.parse import urljoin
+            for pattern in CONTACT_PAGE_PATTERNS:
+                if len(combined_text) + sum(len(t) for t in contact_texts) > 6500:
+                    break
+                try:
+                    contact_url = urljoin(url, pattern)
+                    resp = await page2.goto(contact_url, timeout=6000, wait_until="domcontentloaded")
+                    if resp and resp.status < 400:
+                        await asyncio.sleep(0.2)
+                        ct = await page2.evaluate("() => document.body.innerText")
+                        if ct and len(ct) > 100:
+                            contact_texts.append(ct[:3000])
+                except Exception:
+                    pass
+            if contact_texts:
+                combined_text += "\n\n---\n\n" + "\n\n---\n\n".join(contact_texts)
+            combined_text = combined_text[:6500]
             await context2.close()
         except Exception:
             pass
@@ -636,17 +710,28 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         if ai_result and ai_result.get('ai_success'):
             ai_people = ai_result.get('ai_people', [])
             ai_emails_from_ai = ai_result.get('ai_emails', [])
-            ai_vk = ai_result.get('vk', '')
-            ai_telegram = ai_result.get('telegram', '')
+            ai_phones_from_ai = ai_result.get('ai_phones', [])
+            ai_vk = ai_result.get('ai_vk', '')
+            ai_telegram = ai_result.get('ai_telegram', '')
+            ai_address = ai_result.get('ai_address', '')
             if ai_emails_from_ai:
                 existing = list(res['emails']) if not isinstance(res['emails'], list) else res['emails']
                 new_emails = list(ai_emails_from_ai) if not isinstance(ai_emails_from_ai, list) else ai_emails_from_ai
                 res['emails'] = list(set(existing) | set(new_emails))
+            if ai_phones_from_ai:
+                valid = [p for p in ai_phones_from_ai if _is_valid_phone(p)]
+                if valid and (res['phones'] == '—' or res['phones'] == '— '):
+                    res['phones'] = ", ".join(valid[:3])
+                elif valid:
+                    existing = [p.strip() for p in res['phones'].split(',')]
+                    res['phones'] = ", ".join(list(dict.fromkeys(existing + valid))[:5])
             if ai_vk and res['VK'] == '—':
                 res['VK'] = ai_vk if ai_vk.startswith('http') else f"https://{ai_vk}"
             if ai_telegram and res['TG'] == '—':
                 tg_username = ai_telegram.lstrip('@')
                 res['TG'] = f"https://t.me/{tg_username}"
+            if ai_address:
+                res['addr'] = ai_address
             if ai_people:
                 owners = [p for p in ai_people if p.get('type') in ['owner', 'director']]
                 if owners:
@@ -718,7 +803,7 @@ async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM
                 "VK": res.get("VK", "—"),
                 "TG": res.get("TG", "—"),
                 "MAX": res.get("MAX", "—"),
-                "Адрес": item.get('addr', '—'),
+                "Адрес": res.get('addr', item.get('addr', '—')),
             }
 
         async def sem_enrich(item):

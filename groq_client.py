@@ -95,6 +95,7 @@ EXTRACT_CONTACTS_PROMPT = """Извлеки ВСЕ контактные данн
   "phones": ["+7 978 123-45-67", "8 800 100-00-00"],
   "vk": "vk.com/username или vk.com/id123456",
   "telegram": "username (без @)",
+  "address": "г. Новосибирск, ул. Ленина, д. 1, оф. 101",
   "people": [
     {"name": "Имя Фамилия", "position": "должность", "type": "owner|director|founder|manager"}
   ]
@@ -107,6 +108,7 @@ EXTRACT_CONTACTS_PROMPT = """Извлеки ВСЕ контактные данн
 - Телефоны: любой формат (+7, 8, цифры с тире/пробелами/скобками)
 - VK: vk.com/username, m.vk.com/username, @username
 - Telegram: t.me/username, @username (брось @ при записи)
+- Address: полный юридический или фактический адрес компании
 - Люди: директор, гендиректор, учредитель, владелец, founder, CEO, управляющий
 - Если данных нет — возвращай пустые массивы {}
 
@@ -115,6 +117,7 @@ EXTRACT_CONTACTS_PROMPT = """Извлеки ВСЕ контактные данн
 - "тел: 8 978 123-45-67" → phones: ["89781234567"]
 - "vk.com/durov" → vk: "vk.com/durov"
 - "Наш TG: @mycompany" → telegram: "mycompany"
+- "Адрес: г. Краснодар, ул. Красная, д. 100" → address: "г. Краснодар, ул. Красная, д. 100"
 - "Директор: Иванова М.И." → people: [{"name": "Иванова", "position": "директор", "type": "director"}]"""
 
 
@@ -193,13 +196,20 @@ async def call_groq(system_prompt: str, user_message: str, model: str = DEFAULT_
 async def analyze_page_with_ai(page_text: str, company_name: str = "", model: str = DEFAULT_MODEL) -> dict:
     """Анализирует текст страницы и извлекает контактную информацию через Groq"""
 
-    user_message = f"Компания: {company_name}\n\nТекст страницы:\n{page_text[:10000]}"
+    user_message = f"Компания: {company_name}\n\nТекст страницы:\n{page_text[:6500]}"
 
     result = await call_groq(EXTRACT_CONTACTS_PROMPT, user_message, model)
 
     if "error" not in result:
+        phones_raw = result.get("phones", [])
+        vk_raw = result.get("vk", "")
+        tg_raw = result.get("telegram", "")
         return {
             "ai_emails": result.get("emails", []),
+            "ai_phones": phones_raw if isinstance(phones_raw, list) else [phones_raw] if phones_raw else [],
+            "ai_address": result.get("address", ""),
+            "ai_vk": vk_raw if isinstance(vk_raw, str) else "",
+            "ai_telegram": tg_raw if isinstance(tg_raw, str) else "",
             "ai_socials": result.get("socials", {}),
             "ai_people": result.get("people", []),
             "ai_contacts": result.get("contacts", {}),
@@ -209,6 +219,10 @@ async def analyze_page_with_ai(page_text: str, company_name: str = "", model: st
     else:
         return {
             "ai_emails": [],
+            "ai_phones": [],
+            "ai_address": "",
+            "ai_vk": "",
+            "ai_telegram": "",
             "ai_socials": {},
             "ai_people": [],
             "ai_contacts": {},

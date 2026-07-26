@@ -14,10 +14,10 @@ import os
 import subprocess
 from pathlib import Path
 import workflow as wf
-from PIL import Image
+import base64
 
 API_STORE_FILE = Path(__file__).parent / ".api_keys.enc"
-LOGO_PATH = Path(r"F:\СОЦИТУД\AI-Эксперт\ЮгСпецСети\Фотошопное\Иконки\150.jpg")
+LOGO_PATH = Path(r"F:\СОЦИТУД\AI-Эксперт\ЮгСпецСети\Фотошопное\Иконки\logo_small.svg")
 
 def load_custom_apis():
     """Загружает кастомные API из файла"""
@@ -129,6 +129,7 @@ input:focus-visible, textarea:focus-visible {
 
 /* --- Select / Multiselect --- */
 .stSelectbox > div > div,
+.stMultiSelect > div > div,
 [data-baseweb="select"] {
     background: #024d82 !important;
     color: #ffffff !important;
@@ -136,20 +137,24 @@ input:focus-visible, textarea:focus-visible {
     transition: border-color var(--dur-fast) ease,
                 box-shadow var(--dur-fast) ease !important;
 }
-[data-baseweb="select"] * { color: #ffffff !important; }
+.stSelectbox, .stSelectbox *,
+.stMultiSelect, .stMultiSelect * {
+    color: #ffffff !important;
+}
 [data-baseweb="select"]:focus-within {
     border-color: #E8F9EE !important;
     box-shadow: 0 0 0 1px #E8F9EE !important;
 }
-[data-baseweb="select"] span[data-baseweb="tag"] {
+.stMultiSelect span[data-baseweb="tag"] {
     background: #013a5c !important;
     color: #E8F9EE !important;
 }
-[data-baseweb="select"] span[data-baseweb="tag"] * {
+.stMultiSelect span[data-baseweb="tag"] * {
     color: #E8F9EE !important;
     fill: #E8F9EE !important;
 }
-[data-baseweb="select"] input::placeholder {
+.stMultiSelect input::placeholder,
+.stSelectbox input::placeholder {
     color: #b0c4d4 !important;
 }
 
@@ -221,42 +226,37 @@ input:focus-visible, textarea:focus-visible {
 [data-testid="stToolbar"] button { color: #ffffff !important; }
 [data-testid="stToolbar"] button:hover { background: #024d82 !important; }
 
-/* --- Popover / Menu / Dialog: depth --- */
-[data-baseweb="popover"],
-[data-baseweb="menu"],
-[role="menu"], [role="menubar"],
-div[role="menu"], div[role="dialog"] {
+/* --- Popover / Dropdown: ширина по содержимому --- */
+[data-baseweb="popover"] {
     background: #012F46 !important;
     border: 1px solid #024d82 !important;
     box-shadow: var(--shadow-md) !important;
-    overflow: hidden !important;
+    width: auto !important;
+    min-width: 300px !important;
+    max-width: 520px !important;
     box-sizing: border-box !important;
 }
+[data-baseweb="popover"] * {
+    color: #ffffff !important;
+}
+[data-baseweb="popover"] input {
+    background: #024d82 !important;
+    color: #ffffff !important;
+}
+[data-baseweb="popover"] input::placeholder {
+    color: #b0c4d4 !important;
+}
 
-/* Меню (контекстные, не мультиселект) — фиксированная ширина */
+/* --- Context menu — фиксированная ширина --- */
 [data-baseweb="menu"],
 [role="menu"], div[role="menu"] {
+    background: #012F46 !important;
+    border: 1px solid #024d82 !important;
+    box-shadow: var(--shadow-md) !important;
     width: 180px !important;
     min-width: 180px !important;
     max-width: 180px !important;
-}
-
-/* Мультиселект и селект — ширина по содержимому */
-[data-baseweb="popover"]:has([role="listbox"]) {
-    min-width: 280px !important;
-    max-width: 480px !important;
-    width: auto !important;
-}
-
-[data-baseweb="popover"] input {
-    color: #ffffff !important;
-    background: #024d82 !important;
-}
-[data-baseweb="popover"] label {
-    color: #ffffff !important;
-}
-[data-baseweb="popover"] label span {
-    color: #ffffff !important;
+    box-sizing: border-box !important;
 }
 [data-baseweb="menu"] *, [role="menu"] *, [role="menuitem"] {
     color: #ffffff !important;
@@ -274,7 +274,6 @@ div[role="menu"], div[role="dialog"] {
 [role="menuitem"]:hover,
 [role="menu"] li:hover {
     background: #024d82 !important;
-    color: #ffffff !important;
 }
 
 /* --- Separator --- */
@@ -379,22 +378,102 @@ def _render_live_table(placeholder, export_ph, data):
         pass
 
 
+def _run_enrichment_flow():
+    """Запускает Шаг 2 (парсинг + AI) — вызывается из кнопки или авто-триггера"""
+    st.session_state.stop_requested = False
+    total = len(st.session_state.raw_items)
+    log_message(f"🎯 Парсинг {total} компаний...")
+    log_message(f"🤖 AI: {st.session_state.ai_provider} ({st.session_state.ai_model})")
+
+    progress_bar = st.progress(0)
+    stats_placeholder = st.empty()
+    table_placeholder = st.empty()
+    export_placeholder = st.empty()
+    st.session_state.enrichment_active = True
+
+    if sys.platform == 'win32':
+        try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        except Exception: pass
+
+    processed_data = []
+    search_params = {
+        "ai_provider": st.session_state.ai_provider,
+        "ai_model": st.session_state.ai_model,
+        "total": total,
+        "raw_items": st.session_state.raw_items,
+    }
+
+    async def run_enrichment():
+        count = 0
+        try:
+            async for result in enricher.batch_process(
+                st.session_state.raw_items,
+                log_func=log_message,
+                use_ai=True,
+                ai_provider=st.session_state.ai_provider,
+                ai_model=st.session_state.ai_model,
+                search_params=search_params
+            ):
+                if st.session_state.stop_requested:
+                    log_message("🛑 Остановлено пользователем. Результаты сохранены.")
+                    break
+
+                count += 1
+                processed_data.append(result)
+                try:
+                    progress_bar.progress(count / total)
+                    stats_placeholder.info(f"📊 {count}/{total}")
+                    if count % 20 == 0 and processed_data:
+                        _render_live_table(table_placeholder, export_placeholder, processed_data)
+                except Exception:
+                    pass
+        except Exception as e:
+            log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
+
+        st.session_state.hunter_data = processed_data
+        log_message("=" * 40)
+        log_message(f"✅ ГОТОВО: {count} лидов")
+        st.session_state.enrichment_active = False
+
+    asyncio.run(run_enrichment())
+    play_sound()
+    st.success("✅ Парсинг + AI завершён!")
+
+
 @st.cache_resource
-def _cached_logo():
+@st.cache_data
+def _cached_logo_b64():
     if LOGO_PATH.exists():
         try:
-            return Image.open(LOGO_PATH)
-        except (OSError, IOError):
+            svg = LOGO_PATH.read_text(encoding='utf-8')
+            return "data:image/svg+xml;base64," + base64.b64encode(svg.encode('utf-8')).decode('utf-8')
+        except Exception:
             return None
     return None
 
 # Логотип в боковой панели (в самом верху)
 col_logo1, col_logo2, col_logo3 = st.sidebar.columns([1, 2, 1])
-img = _cached_logo()
-if img:
-    col_logo2.image(img, width=120)
+logo_b64 = _cached_logo_b64()
+if logo_b64:
+    col_logo2.markdown(
+        f'<img src="{logo_b64}" style="width:200px;max-width:100%" alt="ЮгСпецСети">',
+        unsafe_allow_html=True
+    )
 else:
     col_logo2.caption("ЮгСпецСети")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Режим работы")
+auto_mode = st.sidebar.toggle(
+    "🤖 Автоматический режим",
+    value=st.session_state.get('auto_mode', False),
+    help="Шаг 2 (парсинг+AI) запускается сразу после Шага 1 (поиска)"
+)
+st.session_state.auto_mode = auto_mode
+if auto_mode:
+    st.sidebar.success("🔄 Шаг 1 → Шаг 2 непрерывно")
+else:
+    st.sidebar.info("👆 Ручной запуск после проверки")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔌 Статус API")
@@ -582,56 +661,66 @@ st.session_state.ai_model = ai_model
 
 st.header("1. Настройка поиска")
 
-if st.session_state.workflow:
+is_wf_active = bool(st.session_state.workflow)
+if is_wf_active:
     wf_name = st.session_state.workflow["workflow"]["name"]
-    st.info(f"📄 Активен воркфлоу: **{wf_name}**. Поля категории, городов и лимита предзаполнены.")
+    st.info(f"📄 Активен воркфлоу: **{wf_name}** — все параметры берутся из JSON. Поля отключены.")
 
 # ============================================================================
 # КАТЕГОРИЯ
 # ============================================================================
-niche_val_from_wf = st.session_state.workflow.get("search", {}) if st.session_state.workflow else {}
+niche_val_from_wf = st.session_state.workflow.get("search", {}) if is_wf_active else {}
 
 c1, c2 = st.columns(2)
 with c1:
     manual_niche = st.text_input("Категория бизнеса:", placeholder="Введите или выберите ниже",
-                                 value="", key="niche_inp")
+                                 value="", key="niche_inp", disabled=is_wf_active)
     niche_options = ["Выбрать из списка...", *config.HUNTER_QUERIES.keys()]
-    wf_kw = (niche_val_from_wf.get("keywords", [""]) or [""])[0]
-    niche_idx = st.selectbox("Или выберите:", niche_options, key="niche_sel", label_visibility="collapsed")
+    niche_idx = st.selectbox("Или выберите:", niche_options, key="niche_sel", label_visibility="collapsed", disabled=is_wf_active)
     niche = "" if niche_idx == "Выбрать из списка..." else niche_idx
 
 # ============================================================================
-# ГОРОДА
+# ГОРОДА — при активном workflow берутся из JSON
 # ============================================================================
-wf_cities = niche_val_from_wf.get("cities", []) if st.session_state.workflow else []
+wf_cities = niche_val_from_wf.get("cities", []) if is_wf_active else []
 all_city_names = list(config.REGION_COORDS.keys())
 
-default_cities = [c for c in wf_cities if c in all_city_names]
-selected_cities = st.multiselect(
-    "Города:", all_city_names,
-    default=default_cities,
-    key="city_multiselect"
-)
+wf_whole_russia = wf_cities == ["вся россия"]
+default_cities = [] if wf_whole_russia else [c for c in wf_cities if c in all_city_names]
 
-whole_russia = st.checkbox(
-    "Вся Россия (поиск без города)",
-    value=st.session_state.workflow.get("search", {}).get("cities") == ["вся россия"] if st.session_state.workflow else False,
-    key="whole_russia"
-)
+if is_wf_active:
+    st.text(f"🏙️ Города: {'Вся Россия' if wf_whole_russia else ', '.join(default_cities) if default_cities else '—'}")
+else:
+    selected_cities = st.multiselect(
+        "Города:", all_city_names,
+        default=default_cities,
+        placeholder="Выберите города...",
+        key="city_multiselect"
+    )
+
+    whole_russia = st.checkbox(
+        "Вся Россия (поиск без города)",
+        value=False,
+        key="whole_russia"
+    )
 
 # ============================================================================
-# ПАРАМЕТРЫ
+# ПАРАМЕТРЫ — лимит всегда adjustable, exclude — из workflow если активен
 # ============================================================================
-wf_limit = niche_val_from_wf.get("limit", 500) if st.session_state.workflow else 500
-limit_val = st.slider("Кол-во компаний:", 20, 1000, wf_limit, key="limit_slider")
+limit_val = st.slider("Кол-во компаний:", 20, 1000, 500, key="limit_slider")
 
-wf_exclude = niche_val_from_wf.get("exclude_keywords", []) if st.session_state.workflow else []
-exclude_input = st.text_input(
-    "Исключить слова (через запятую):",
-    value=", ".join(wf_exclude),
-    key="exclude_input"
-)
-exclude_keywords = [x.strip() for x in exclude_input.split(",") if x.strip()]
+if is_wf_active:
+    wf_exclude = niche_val_from_wf.get("exclude_keywords", [])
+    exclude_keywords = list(wf_exclude)
+    if exclude_keywords:
+        st.text(f"🚫 Исключено: {', '.join(exclude_keywords)}")
+else:
+    exclude_input = st.text_input(
+        "Исключить слова (через запятую):",
+        value="",
+        key="exclude_input"
+    )
+    exclude_keywords = [x.strip() for x in exclude_input.split(",") if x.strip()]
 
 # ============================================================================
 # WORKFLOW — импорт/экспорт/библиотека
@@ -674,8 +763,9 @@ with st.expander("📦 Workflow (импорт/экспорт/библиотек�
         import_tabs = st.tabs(["📁 Загрузить файл", "📋 Вставить текст"])
         with import_tabs[0]:
             uploaded = st.file_uploader("Выберите JSON файл", type=["json"], key="wf_file")
-            if uploaded:
+            if uploaded and st.button("📂 Загрузить файл", key="apply_import_file", use_container_width=True):
                 try:
+                    uploaded.seek(0)
                     content = uploaded.read().decode("utf-8")
                     wf_obj = wf.Workflow.from_json(content)
                     st.session_state.workflow = wf_obj.data
@@ -772,27 +862,45 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
     st.session_state.raw_items = []
     st.session_state.hunter_data = []
 
-    # Определяем категорию
-    current_niche = manual_niche.strip() if manual_niche.strip() else niche
-    if not current_niche:
-        st.error("❌ Укажите категорию (введите или выберите из списка)")
-        st.stop()
-    log_message(f"🎯 Категория: {current_niche}")
-
-    # Определяем keywords и markers из workflow или конфига
+    # Определяем keywords, markers, города, лимит — из workflow или UI
     if st.session_state.workflow:
         sw = st.session_state.workflow["search"]
-        final_keywords = sw.get("keywords", [current_niche])
+        final_keywords = sw.get("keywords", [])
         primary_markers = sw.get("primary_markers", config.PRIMARY_MARKERS)
         secondary_markers = sw.get("secondary_markers", config.SECONDARY_MARKERS)
         final_markers = primary_markers + secondary_markers
+        limit_val = sw.get("limit", 500)
+        exclude_keywords = sw.get("exclude_keywords", [])
+        wf_cities = sw.get("cities", [])
+        if wf_cities == ["вся россия"]:
+            target_cities = ["вся россия"]
+        else:
+            target_cities = [c for c in wf_cities if c in list(config.REGION_COORDS.keys())]
         log_message(f"📄 Workflow: {st.session_state.workflow['workflow']['name']}")
+        if not final_keywords:
+            st.error("❌ В workflow нет ключевых слов (keywords)")
+            st.stop()
+        if not target_cities:
+            st.error("❌ В workflow нет городов (cities)")
+            st.stop()
     elif manual_niche.strip():
-        final_keywords = [manual_niche.strip()]
+        current_niche = manual_niche.strip()
+        final_keywords = [current_niche]
         primary_markers = config.PRIMARY_MARKERS
         secondary_markers = config.SECONDARY_MARKERS
         final_markers = primary_markers + secondary_markers
+        if whole_russia:
+            target_cities = ["вся россия"]
+        elif selected_cities:
+            target_cities = list(selected_cities)
+        else:
+            st.error("❌ Выберите хотя бы один город или включите 'Вся Россия'")
+            st.stop()
     else:
+        current_niche = niche
+        if not current_niche:
+            st.error("❌ Укажите категорию (введите или выберите из списка)")
+            st.stop()
         niche_val = config.HUNTER_QUERIES.get(niche, {})
         if isinstance(niche_val, dict):
             final_keywords = niche_val.get("keywords", [])
@@ -801,15 +909,14 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
         primary_markers = config.PRIMARY_MARKERS
         secondary_markers = config.SECONDARY_MARKERS
         final_markers = primary_markers + secondary_markers
-
-    # Определяем города
-    if whole_russia:
-        target_cities = ["вся россия"]
-    elif selected_cities:
-        target_cities = list(selected_cities)
-    else:
-        st.error("❌ Выберите хотя бы один город или включите 'Вся Россия'")
-        st.stop()
+        # Города для ручного режима
+        if whole_russia:
+            target_cities = ["вся россия"]
+        elif selected_cities:
+            target_cities = list(selected_cities)
+        else:
+            st.error("❌ Выберите хотя бы один город или включите 'Вся Россия'")
+            st.stop()
 
     log_message(f"📝 Ключевых слов: {len(final_keywords)}, маркеров: {len(final_markers)}")
     log_message(f"🏙️ Городов: {len(target_cities)}")
@@ -924,70 +1031,20 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
 
     if results:
         st.success(f"✅ Успешно собрано {len(st.session_state.raw_items)} компаний. Переходите к обогащению!")
+        if st.session_state.get('auto_mode'):
+            st.session_state.auto_enrich_pending = True
     else:
         st.error("❌ Ничего не найдено или проверьте API-ключи.")
     st.rerun()
 
-if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled=not st.session_state.raw_items, width='stretch'):
-    st.session_state.stop_requested = False
-    total = len(st.session_state.raw_items)
-    log_message(f"🎯 Парсинг {total} компаний...")
-    log_message(f"🤖 AI: {st.session_state.ai_provider} ({st.session_state.ai_model})")
-    
-    progress_bar = st.progress(0)
-    stats_placeholder = st.empty()
-    table_placeholder = st.empty()
-    export_placeholder = st.empty()
-    st.session_state.enrichment_active = True
-    
-    if sys.platform == 'win32':
-        try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        except Exception: pass
+# Авто-триггер: Шаг 2 запускается сразу после Шага 1
+if st.session_state.get('auto_enrich_pending') and has_step1:
+    if not st.session_state.get('enrichment_active'):
+        st.session_state.auto_enrich_pending = False
+        _run_enrichment_flow()
 
-    processed_data = []
-    search_params = {
-        "ai_provider": st.session_state.ai_provider,
-        "ai_model": st.session_state.ai_model,
-        "total": total,
-        "raw_items": st.session_state.raw_items,
-    }
-    
-    async def run_enrichment():
-        count = 0
-        try:
-            async for result in enricher.batch_process(
-                st.session_state.raw_items, 
-                log_func=log_message, 
-                use_ai=True,
-                ai_provider=st.session_state.ai_provider,
-                ai_model=st.session_state.ai_model,
-                search_params=search_params
-            ):
-                if st.session_state.stop_requested:
-                    log_message("🛑 Остановлено пользователем. Результаты сохранены.")
-                    break
-                
-                count += 1
-                processed_data.append(result)
-                try:
-                    progress_bar.progress(count / total)
-                    stats_placeholder.info(f"📊 {count}/{total}")
-                    # Живая таблица каждые 20 результатов
-                    if count % 20 == 0 and processed_data:
-                        _render_live_table(table_placeholder, export_placeholder, processed_data)
-                except Exception:
-                    pass
-        except Exception as e:
-            log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
-        
-        st.session_state.hunter_data = processed_data
-        log_message("=" * 40)
-        log_message(f"✅ ГОТОВО: {count} лидов")
-        st.session_state.enrichment_active = False
-    
-    asyncio.run(run_enrichment())
-    play_sound()
-    st.success("✅ Парсинг + AI завершён!")
+if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled=not st.session_state.raw_items, width='stretch'):
+    _run_enrichment_flow()
 
 # Кнопки "Продолжить" / "Удалить" предыдущую сессию
 if st.session_state.get('checkpoint_info'):
