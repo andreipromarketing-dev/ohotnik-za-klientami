@@ -7,16 +7,24 @@ import json
 import aiohttp
 import asyncio
 
-GROQ_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+# Подхватываем .env и без config.py (чтобы работал и прямой запуск файла)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+except Exception:
+    pass
 
+GROQ_URL = "https://api.groq.com/openai/v1"
+# Проверен живьём 25.09.2026 (HTTP 200 на /chat/completions)
+DEFAULT_MODEL = "openai/gpt-oss-20b"
+
+# Только модели, подтверждённые живым запросом 25.09.2026.
+# Остальные (llama-3.1-8b-instant, mixtral, gemma2, deepseek-r1, qwen3.6)
+# декомиссированы Groq → 404 model_not_found.
 MODELS = {
-    "llama-3.1-8b-instant": "Llama 3.1 8B (быстрый)",
-    "llama-3.1-70b-versatile": "Llama 3.1 70B (мощный)",
-    "llama-3.3-70b-versatile": "Llama 3.3 70B (новый)",
-    "mixtral-8x7b-32768": "Mixtral 8x7B",
-    "gemma2-9b-it": "Gemma 2 9B",
-    "deepseek-r1-distill-llama-70b": "DeepSeek R1 (reasoning)",
+    "openai/gpt-oss-20b": "GPT OSS 20B (быстрый, по умолчанию)",
+    "openai/gpt-oss-120b": "GPT OSS 120B (умный)",
+    "qwen/qwen3.8-27b": "Qwen 3.8 27B",
 }
 
 # --- Multi-key support ---
@@ -232,21 +240,70 @@ async def analyze_page_with_ai(page_text: str, company_name: str = "", model: st
         }
 
 
-def check_groq() -> bool:
-    """Проверяет доступность хотя бы одного Groq API ключа через /chat (не /models)"""
+def check_groq_detail() -> dict:
+    """Детальная проверка подключения.
+
+    Возвращает {"ok": bool, "stage": str, "hint": str}, где stage:
+      no_keys     — нет GROQ_API_KEY в окружении/.env
+      ok          — ключ принят, API отвечает
+      invalid_key — ключ отклонён (401/403)
+      api_error   — API отвечает, но с другой ошибкой
+      network     — сеть/сертификат/таймаут (до API не достучались)
+
+    Использует urllib + системное хранилище сертификатов Windows, а НЕ
+    requests+certifi: certifi не знает локальный CA (антивирус/провайдер)
+    и падает с SSL CERTIFICATE_VERIFY_FAILED даже при валидном ключе.
+    Синхронная — безопасно вызывается из async-кода обогатителя.
+    """
+    import ssl
+    import urllib.request
+    import urllib.error
+
     if not _key_mgr.has_keys():
-        return False
+        return {"ok": False, "stage": "no_keys", "hint": "Нет GROQ_API_KEY в .env"}
     key = _key_mgr.current()
     if not key:
-        return False
+        return {"ok": False, "stage": "no_keys", "hint": "Все ключи помечены недоступными"}
+
+    payload = json.dumps({
+        "model": DEFAULT_MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+    }).encode()
+    req = urllib.request.Request(
+        f"{GROQ_URL}/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            # Без этого Cloudflare перед Groq режет запрос кодом 1010
+            # ("banned browser"): дефолтный UA Python-urllib в бан-листе
+            "User-Agent": "OhotnikZaKlientami/1.0 (Windows)",
+        },
+        method="POST",
+    )
     try:
-        import requests
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        payload = {"model": DEFAULT_MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
-        resp = requests.post(f"{GROQ_URL}/chat/completions", json=payload, headers=headers, timeout=10)
-        return resp.status_code == 200
-    except Exception:
-        return False
+        # create_default_context() на Windows подхватывает системное
+        # хранилище (CryptoAPI) — локальный CA там есть, handshake проходит
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+            if resp.status == 200:
+                return {"ok": True, "stage": "ok", "hint": f"HTTP 200, модель {DEFAULT_MODEL}"}
+            return {"ok": False, "stage": "api_error", "hint": f"HTTP {resp.status}"}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            _key_mgr.mark_bad(key)
+            return {"ok": False, "stage": "invalid_key",
+                    "hint": f"Ключ ...{key[-8:]} отклонён (HTTP {e.code})"}
+        return {"ok": False, "stage": "api_error", "hint": f"HTTP {e.code}"}
+    except Exception as e:
+        return {"ok": False, "stage": "network",
+                "hint": f"{type(e).__name__}: {str(e)[:120]}"}
+
+
+def check_groq() -> bool:
+    """Совместимая обёртка: True/False (используется гейтом в enricher.py)"""
+    return check_groq_detail()["ok"]
 
 
 def get_available_models() -> dict:

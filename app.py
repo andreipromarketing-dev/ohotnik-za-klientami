@@ -351,6 +351,22 @@ def log_message(msg):
     except Exception:
         pass
 
+def _ui_error(msg):
+    """Видимая ошибка отрисовки: в лог + в терминал. Никогда не молчим."""
+    log_message(f"🔴 {msg}")
+    try:
+        print(f"[UI-ERROR] {msg}")
+    except Exception:
+        pass
+
+def _render_live_log(placeholder, n=5):
+    """Рисует последние n строк лога в плейсхолдер. Ошибки — наружу."""
+    try:
+        tail = st.session_state.logs[-n:] if st.session_state.logs else ["..."]
+        placeholder.code("\n".join(tail))
+    except Exception as e:
+        _ui_error(f"live-log: {type(e).__name__}: {str(e)[:120]}")
+
 def _render_live_table(placeholder, export_ph, data):
     """Рисует таблицу + метрики + кнопку экспорта в плейсхолдер"""
     try:
@@ -374,8 +390,8 @@ def _render_live_table(placeholder, export_ph, data):
                 key=f"live_export_{len(data)}",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-    except Exception:
-        pass
+    except Exception as e:
+        _ui_error(f"live-table: {type(e).__name__}: {str(e)[:120]}")
 
 
 def _run_enrichment_flow():
@@ -387,6 +403,7 @@ def _run_enrichment_flow():
 
     progress_bar = st.progress(0)
     stats_placeholder = st.empty()
+    live_log_placeholder = st.empty()
     table_placeholder = st.empty()
     export_placeholder = st.empty()
     st.session_state.enrichment_active = True
@@ -423,14 +440,21 @@ def _run_enrichment_flow():
                 try:
                     progress_bar.progress(count / total)
                     stats_placeholder.info(f"📊 {count}/{total}")
-                    if count % 20 == 0 and processed_data:
+                    _render_live_log(live_log_placeholder)
+                    if count % 5 == 0 and processed_data:
                         _render_live_table(table_placeholder, export_placeholder, processed_data)
-                except Exception:
-                    pass
+                except Exception as e:
+                    _ui_error(f"progress: {type(e).__name__}: {str(e)[:120]}")
         except Exception as e:
             log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
 
         st.session_state.hunter_data = processed_data
+        # Финальная отрисовка: таблица за последние <5 лидов тоже должна показаться
+        try:
+            _render_live_table(table_placeholder, export_placeholder, processed_data)
+            _render_live_log(live_log_placeholder)
+        except Exception as e:
+            _ui_error(f"final-render: {type(e).__name__}: {str(e)[:120]}")
         log_message("=" * 40)
         log_message(f"✅ ГОТОВО: {count} лидов")
         st.session_state.enrichment_active = False
@@ -532,20 +556,28 @@ if st.session_state.custom_apis:
 
 try:
     from lm_studio_client import check_lm_studio, get_available_models as get_lm_models
-    from groq_client import check_groq, get_available_models as get_groq_models
+    from groq_client import check_groq, check_groq_detail, get_available_models as get_groq_models
     from unclose_client import check_unclose, get_available_models as get_unclose_models
     
     @st.cache_resource(ttl=300)
     def _cached_check_groq():
         return check_groq()
     @st.cache_resource(ttl=300)
+    def _cached_groq_status():
+        return check_groq_detail()
+    @st.cache_resource(ttl=300)
     def _cached_groq_models():
         return get_groq_models()
     
-    if _cached_check_groq():
+    groq_status = _cached_groq_status()
+    if groq_status["ok"]:
         st.sidebar.success("✅ Groq: Подключен")
+    elif groq_status["stage"] == "no_keys":
+        st.sidebar.warning("⚠️ Groq: Нет ключа в .env")
+    elif groq_status["stage"] == "invalid_key":
+        st.sidebar.error(f"❌ Groq: ключ отклонён ({groq_status['hint']})")
     else:
-        st.sidebar.warning("⚠️ Groq: Не настроен")
+        st.sidebar.warning(f"⚠️ Groq: нет связи ({groq_status['hint']})")
 except Exception:
     st.sidebar.warning("⚠️ AI: Не настроен")
 
@@ -658,6 +690,7 @@ with ai_col2:
 
 st.session_state.ai_provider = ai_provider
 st.session_state.ai_model = ai_model
+st.caption(f"🤖 Обогащение будет делать: **{ai_provider}** / **{ai_model or 'модель не выбрана'}**")
 
 st.header("1. Настройка поиска")
 
@@ -1074,6 +1107,7 @@ if st.session_state.get('checkpoint_info'):
                 
                 progress_bar = st.progress(0)
                 stats_placeholder = st.empty()
+                live_log_placeholder = st.empty()
                 table_placeholder = st.empty()
                 export_placeholder = st.empty()
                 st.session_state.enrichment_active = True
@@ -1110,14 +1144,20 @@ if st.session_state.get('checkpoint_info'):
                             try:
                                 progress_bar.progress(count / total)
                                 stats_placeholder.info(f"📊 {count}/{total}")
-                                if count % 20 == 0 and processed_data:
+                                _render_live_log(live_log_placeholder)
+                                if count % 5 == 0 and processed_data:
                                     _render_live_table(table_placeholder, export_placeholder, processed_data)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                _ui_error(f"progress: {type(e).__name__}: {str(e)[:120]}")
                     except Exception as e:
                         log_message(f"⚠️ Прервано: {str(e)[:50]}. Сохраняем прогресс...")
                     
                     st.session_state.hunter_data = list(cp_results) + processed_data
+                    try:
+                        _render_live_table(table_placeholder, export_placeholder, st.session_state.hunter_data)
+                        _render_live_log(live_log_placeholder)
+                    except Exception as e:
+                        _ui_error(f"final-render: {type(e).__name__}: {str(e)[:120]}")
                     log_message("=" * 40)
                     log_message(f"✅ ГОТОВО: {count} новых лидов (всего {len(cp_results) + len(processed_data)})")
                     st.session_state.enrichment_active = False

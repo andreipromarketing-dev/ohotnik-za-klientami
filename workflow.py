@@ -57,7 +57,7 @@ class Workflow:
             },
             "enrichment": {
                 "ai_provider": "Groq",
-                "ai_model": "llama-3.1-70b-versatile",
+                "ai_model": "openai/gpt-oss-120b",
             },
         }
 
