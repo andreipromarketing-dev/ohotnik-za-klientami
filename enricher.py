@@ -1,9 +1,12 @@
 import asyncio
 import html as html_module
 import json
+import logging
 import random
 import re
+import traceback
 import urllib.parse
+from logging.handlers import RotatingFileHandler
 import aiohttp
 import config
 from pathlib import Path
@@ -12,6 +15,21 @@ from search_providers import AGGREGATOR_BODY_SIGNALS, SINGLE_BUSINESS_SIGNALS
 
 CHECKPOINT_DIR = Path.home() / ".ohotnik"
 CHECKPOINT_FILE = CHECKPOINT_DIR / "checkpoint.json"
+
+# Файловый лог с полными трейсбеками: когда парсер "слетает",
+# причина остаётся здесь, а не только в окне программы
+LOG_DIR = CHECKPOINT_DIR / "logs"
+try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _fh = RotatingFileHandler(LOG_DIR / "ohotnik.log", maxBytes=5 * 1024 * 1024,
+                              backupCount=3, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger = logging.getLogger("ohotnik")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        logger.addHandler(_fh)
+except Exception:
+    logger = logging.getLogger("ohotnik")
 
 
 def save_checkpoint(results, processed_urls, search_params):
@@ -193,24 +211,6 @@ def _extract_from_meta(html_text):
 
 LPR_INDICATORS = ["директор", "гендиректор", "генеральный директор", "управляющ", "руководител", "владелец", "owner", "учредител", "администратор", "бенефициар", "首", "ceo", "chief", "director", "owner", "founder", "соучредител"]
 
-async def quick_check_lpr(url, log_func=None):
-    """Быстрая проверка страницы на наличие ЛПР без полного парсинга"""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-    }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                if resp.status == 200:
-                    text = await resp.text()
-                    text_lower = text.lower()
-                    for indicator in LPR_INDICATORS:
-                        if indicator.lower() in text_lower:
-                            return True
-    except Exception:
-        pass
-    return False
 CONTACT_PAGE_PATTERNS = [
     "/contacts", "/kontakty", "/contact", "/about", "/about-us",
     "/o-nas", "/o-kompanii", "/callback", "/obratnaya-svyaz",
@@ -364,12 +364,26 @@ async def _is_aggregator_page(page, company_name=None, log_func=None):
             score -= 2
             reasons.append(f"имя_компании({name_mentions})")
 
-    if score >= 4:
+    # Порог 6 (был 4): обычные сайты компаний с рейтинг-виджетом
+    # ("4.8 из 5", "120 отзывов") и несколькими телефонами иначе
+    # ложно считаются агрегаторами и вылетают целиком без контактов
+    if score >= 6:
         if log_func:
             log_func(f"🚫 АГРЕГАТОР (score={score}): {'; '.join(reasons)}")
         return True
 
     return False
+
+def _is_tg_junk(link: str) -> bool:
+    """Отсекает мусорные TG-ссылки: виджеты 'поделиться', Instant View прокси.
+    Легитимные t.me/username и t.me/+invite НЕ трогаем."""
+    low = (link or "").lower()
+    if "/share" in low:
+        return True
+    if "t.me/iv?" in low or "telegram.me/iv?" in low:
+        return True
+    return False
+
 
 async def _extract_contacts_from_page(page, log_func=None):
     """Извлекает контакты из одной страницы Playwright"""
@@ -502,9 +516,17 @@ async def _extract_contacts_from_page(page, log_func=None):
     for slug in tg_script:
         tg_links.add(f"https://t.me/{slug}")
 
-    # Фильтрация VK
+    # Фильтрация VK: кнопки "поделиться" и служебные страницы VK
+    # (vk.com/dev, виджеты, логин, приложения, стены/фото с ID) —
+    # иначе в колонку попадает мусор вместо группы компании
     vk_links = {l for l in vk_links
-                if not any(x in l.lower() for x in ['share', 'like', 'comment', 'friend', 'acl', 'settings', 'feed', 'news', 'write'])}
+                if not any(x in l.lower() for x in ['share', 'like', 'comment', 'friend', 'acl', 'settings', 'feed', 'news', 'write',
+                                                    'vk.com/dev', 'vk.com/doc', 'widget', 'login', 'join',
+                                                    'vk.com/app', 'vk.com/support', 'wall-', 'photo-', 'album-', 'video-'])}
+
+    # Фильтрация TG: виджеты "поделиться" и IV-прокси — иначе в колонку
+    # попадает мусор вида telegram.me/share/url вместо канала компании
+    tg_links = {l for l in tg_links if not _is_tg_junk(l)}
 
     return {
         "emails": list(emails),
@@ -512,11 +534,13 @@ async def _extract_contacts_from_page(page, log_func=None):
         "vk": list(vk_links),
         "tg": list(tg_links),
         "social": social_links,
+        "text": text or "",
     }
 
 
 async def _try_contact_pages(base_url, browser, log_func=None):
-    """Пробует зайти на /contacts, /about и т.д. для извлечения контактов"""
+    """Пробует зайти на /contacts, /about и т.д. для извлечения контактов.
+    Один контекст и одна вкладка на все шаблоны (а не 12 контекстов)."""
     from urllib.parse import urljoin
     all_emails = set()
     all_phones = []
@@ -524,15 +548,21 @@ async def _try_contact_pages(base_url, browser, log_func=None):
     all_tg = set()
     all_social = {}
 
-    for pattern in CONTACT_PAGE_PATTERNS:
-        try:
-            contact_url = urljoin(base_url, pattern)
-            context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-            page = await context.new_page()
-            await page.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", lambda route: route.abort())
+    context = None
+    try:
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        page = await context.new_page()
+        await page.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", lambda route: route.abort())
 
+        for pattern in CONTACT_PAGE_PATTERNS:
+            # Хватит данных — дальше не ходим (иначе страницы × таймаут
+            # съедают весь бюджет сайта и он вылетает по общему таймауту
+            # вместе с уже найденным)
+            if len(all_emails) + len(all_phones) + len(all_vk) + len(all_tg) >= 3:
+                break
             try:
-                resp = await page.goto(contact_url, timeout=8000, wait_until="domcontentloaded")
+                contact_url = urljoin(base_url, pattern)
+                resp = await page.goto(contact_url, timeout=5000, wait_until="domcontentloaded")
                 if resp and resp.status < 400:
                     await asyncio.sleep(0.3)
                     data = await _extract_contacts_from_page(page, log_func)
@@ -543,11 +573,12 @@ async def _try_contact_pages(base_url, browser, log_func=None):
                     all_social.update(data["social"])
             except Exception:
                 pass
-            finally:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
+    except Exception:
+        pass
+    finally:
+        try:
+            if context:
+                await context.close()
         except Exception:
             pass
 
@@ -558,6 +589,21 @@ async def _try_contact_pages(base_url, browser, log_func=None):
         "tg": list(all_tg),
         "social": all_social,
     }
+
+
+def _dedupe_phones(all_phones: list) -> list:
+    """Убирает дубли: 8XXXXXXXXXX и +7XXXXXXXXXX — один номер.
+    Возвращает первые написания (читаемые форматы сохраняются)."""
+    seen_digits = set()
+    deduped = []
+    for p in all_phones or []:
+        d = re.sub(r'\D', '', p)
+        if len(d) == 11 and d.startswith('8'):
+            d = '7' + d[1:]
+        if d and d not in seen_digits:
+            seen_digits.add(d)
+            deduped.append(p)
+    return deduped
 
 
 async def enrich_site_data(browser, url, company_name=None, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model=""):
@@ -582,20 +628,13 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         else:
             return res
 
-    if use_ai:
-        if log_func: log_func(f"🔍 Быстрая проверка ЛПР...")
-        has_lpr = await quick_check_lpr(url, log_func)
-        if not has_lpr:
-            if log_func: log_func(f"⚠️ ЛПР не найден в HTML - продолжаем парсинг")
-        else:
-            if log_func: log_func(f"✅ ЛПР обнаружен в HTML")
-
     # === ШАГ 1: Парсим главную страницу ===
     all_emails = set()
     all_phones = []
     all_vk = set()
     all_tg = set()
     all_social = {}
+    main_page_text = ""
 
     context = None
     try:
@@ -619,6 +658,8 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         all_vk.update(main_data["vk"])
         all_tg.update(main_data["tg"])
         all_social.update(main_data["social"])
+        # Текст главной пригодится AI-шагу — не качаем страницу второй раз
+        main_page_text = main_data.get("text", "")
 
     except Exception as e:
         if log_func: log_func(f"⚠️ {str(e)[:40]}")
@@ -641,8 +682,9 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         all_social.update(contact_data["social"])
 
     # === Собираем результат ===
-    unique_phones = list(dict.fromkeys(all_phones))
-    res['phones'] = ", ".join(unique_phones[:5]) if unique_phones else '—'
+    # Нормализация дублей: 8XXXXXXXXXX и +7XXXXXXXXXX — один номер
+    deduped_phones = _dedupe_phones(all_phones)
+    res['phones'] = ", ".join(deduped_phones[:5]) if deduped_phones else '—'
     res['emails'] = list(all_emails)
 
     if all_vk:
@@ -655,20 +697,25 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
         pass  # Instagram не сохраняем отдельно
     if "MAX" in all_social:
         res['MAX'] = all_social["MAX"] if all_social["MAX"].startswith("http") else f"https://{all_social['MAX']}"
-    elif "max.ru" in " ".join(all_vk + all_tg):
+    elif "max.ru" in " ".join(all_vk | all_tg):
         res['MAX'] = "https://max.ru"
 
-    # === ШАГ 3: AI анализ ===
+    # === ШАГ 3: AI анализ (текст главной переиспользуется с Шага 1;
+    # падение fetch/AI не выкидывает уже найденные regex-данные)
     ai_result = None
     if use_ai and AI_AVAILABLE:
         combined_text = ""
+        context2 = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
         try:
-            context2 = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
             page2 = await context2.new_page()
             await page2.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", lambda route: route.abort())
-            await page2.goto(url, timeout=12000, wait_until="domcontentloaded")
-            await asyncio.sleep(0.3)
-            main_text = await page2.evaluate("() => document.body.innerText")
+            if main_page_text:
+                # Текст главной уже есть с Шага 1 — повторная загрузка не нужна
+                main_text = main_page_text
+            else:
+                await page2.goto(url, timeout=8000, wait_until="domcontentloaded")
+                await asyncio.sleep(0.3)
+                main_text = await page2.evaluate("() => document.body.innerText")
             combined_text = _smart_extract_text(main_text)
             # Пробуем контактные страницы — их текст короткий, добавляем целиком
             contact_texts = []
@@ -707,6 +754,15 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
             else:
                 ai_result = await ai_analyze_unclose(combined_text, company_name, ai_model)
 
+        if ai_result and log_func:
+            if ai_result.get('ai_success'):
+                log_func(
+                    f"   🤖 AI итог: email={len(ai_result.get('ai_emails', []))} "
+                    f"тел={len(ai_result.get('ai_phones', []))} "
+                    f"VK={'да' if ai_result.get('ai_vk') else 'нет'} "
+                    f"TG={'да' if ai_result.get('ai_telegram') else 'нет'} "
+                    f"людей={len(ai_result.get('ai_people', []))}"
+                )
         if ai_result and ai_result.get('ai_success'):
             ai_people = ai_result.get('ai_people', [])
             ai_emails_from_ai = ai_result.get('ai_emails', [])
@@ -741,6 +797,10 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
                     p = ai_people[0]
                     res['ЛПР'] = f"{p.get('name', '')} ({p.get('position', '')})"
                 if log_func: log_func(f"   👤 {len(ai_people)} контактов")
+        else:
+            # AI отработал, но безуспешно — показываем причину, а не тишину
+            if ai_result and ai_result.get('ai_error') and log_func:
+                log_func(f"🔴 AI ({ai_provider}): {str(ai_result.get('ai_error'))[:120]}")
 
     # === ШАГ 4: VK API fallback ===
     async with aiohttp.ClientSession() as session:
@@ -758,91 +818,124 @@ async def enrich_site_data(browser, url, company_name=None, log_func=None, use_a
                             res['VK'] = f"https://vk.com/{screen}"
 
                 if res['VK'] == '—':
-                    search_name = company_name.split()[0]
-                    vk_url = f"https://api.vk.com/method/users.search?q={urllib.parse.quote(search_name)}&access_token={config.VK_TOKEN}&v=5.131"
-                    async with session.get(vk_url) as r:
-                        vdata = await r.json()
-                        users = vdata.get('response', {}).get('items', [])
-                        if users and users[0].get('id'):
-                            res['VK'] = f"https://vk.com/id{users[0].get('id')}"
+                    parts = (company_name or "").split()
+                    if parts:
+                        search_name = parts[0]
+                        vk_url = f"https://api.vk.com/method/users.search?q={urllib.parse.quote(search_name)}&access_token={config.VK_TOKEN}&v=5.131"
+                        async with session.get(vk_url) as r:
+                            vdata = await r.json()
+                            users = vdata.get('response', {}).get('items', [])
+                            if users and users[0].get('id'):
+                                res['VK'] = f"https://vk.com/id{users[0].get('id')}"
             except Exception: pass
 
     return res
 
 
 async def batch_process(items_list, log_func=None, use_ai=False, ai_provider="LM Studio", ai_model="",
-                        processed_urls=None, search_params=None, checkpoint_every=20):
-    """Параллельный парсинг сайтов с автосохранением"""
+                        processed_urls=None, search_params=None, checkpoint_every=20,
+                        browser_chunk=40, base_results=None, base_urls=None):
+    """Параллельный парсинг сайтов с автосохранением.
+    Браузер перезапускается каждые browser_chunk сайтов: долгоживущий
+    Chromium пухнет по памяти и падает посреди длинного прогона.
+    base_results/base_urls — уже собранное (докачка): файл не затирается."""
     semaphore = asyncio.Semaphore(4)
-    skip_urls = processed_urls or set()
-    results_so_far = []
+    skip_urls = set(processed_urls or set()) | set(base_urls or set())
+    results_so_far = list(base_results or [])
     search_params = search_params or {}
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, channel='chrome')
+    def _stub(site):
+        return {'site': site or '—', 'phones': '—', 'emails': [],
+                'VK': '—', 'TG': '—', 'MAX': '—', 'ЛПР': '—', 'addr': ''}
 
-        async def _do_enrich(item):
-            """Выполняет enrich для одного элемента (без семафора, для wait_for)"""
-            site = (item.get('websites') or [None])[0]
-            try:
-                res = await enrich_site_data(browser, site, item.get('name'), log_func=log_func, use_ai=use_ai, ai_provider=ai_provider, ai_model=ai_model)
-            except asyncio.TimeoutError:
-                if log_func: log_func(f"⏰ Таймаут на {site or '—'}")
-                res = {'site': site or '—', 'phones': '—', 'emails': [], 'VK': '—', 'TG': '—', 'MAX': '—', 'ЛПР': '—'}
-            except Exception as e:
-                if log_func: log_func(f"❌ Ошибка на {site or '—'}: {str(e)[:50]}")
-                res = {'site': site or '—', 'phones': '—', 'emails': [], 'VK': '—', 'TG': '—', 'MAX': '—', 'ЛПР': '—'}
+    def _row(item, res):
+        emails = res.get('emails', [])
+        return {
+            "Компания": item.get('name', '—'),
+            "ЛПР": res.get("ЛПР", "—"),
+            "Телефон": res.get("phones", "—"),
+            "Email": ", ".join(emails[:3]) if emails else "—",
+            "Сайт": res.get("site", "—"),
+            "VK": res.get("VK", "—"),
+            "TG": res.get("TG", "—"),
+            "MAX": res.get("MAX", "—"),
+            "Адрес": res.get('addr', item.get('addr', '—')),
+        }
 
-            emails = res.get('emails', [])
-            return {
-                "Компания": item.get('name', '—'),
-                "ЛПР": res.get("ЛПР", "—"),
-                "Телефон": res.get("phones", "—"),
-                "Email": ", ".join(emails[:3]) if emails else "—",
-                "Сайт": res.get("site", "—"),
-                "VK": res.get("VK", "—"),
-                "TG": res.get("TG", "—"),
-                "MAX": res.get("MAX", "—"),
-                "Адрес": res.get('addr', item.get('addr', '—')),
-            }
-
-        async def sem_enrich(item):
-            async with semaphore:
-                return await asyncio.wait_for(_do_enrich(item), timeout=90)
-
-        # Фильтруем уже обработанные
-        remaining = []
-        for item in items_list:
-            site = (item.get('websites') or [None])[0]
-            if site and site in skip_urls:
-                continue
-            remaining.append(item)
-
-        if skip_urls and log_func:
-            log_func(f"⏩ Пропускаем {len(skip_urls)} уже обработанных, осталось {len(remaining)}")
-
-        tasks = [sem_enrich(item) for item in remaining]
-        count = 0
-        for coro in asyncio.as_completed(tasks):
-            try:
-                result = await coro
-                count += 1
-                results_so_far.append(result)
-                # Автосохранение каждые N результатов
-                if count % checkpoint_every == 0:
-                    all_urls = skip_urls | {r.get("Сайт", "") for r in results_so_far if r.get("Сайт", "") != "—"}
-                    save_checkpoint(results_so_far, all_urls, search_params)
-                    if log_func: log_func(f"💾 Чекпоинт сохранён ({count} обработано)")
-                yield result
-            except Exception as e:
-                if log_func: log_func(f"❌ Task error: {str(e)[:50]}")
-                continue
-
-        # Финальное сохранение
-        all_urls = skip_urls | {r.get("Сайт", "") for r in results_so_far if r.get("Сайт", "") != "—"}
-        save_checkpoint(results_so_far, all_urls, search_params)
-
+    async def _do_enrich(browser, item):
+        """Выполняет enrich для одного элемента (без семафора, для wait_for)"""
+        site = (item.get('websites') or [None])[0]
         try:
-            await browser.close()
-        except Exception:
-            pass
+            res = await enrich_site_data(browser, site, item.get('name'), log_func=log_func, use_ai=use_ai, ai_provider=ai_provider, ai_model=ai_model)
+        except asyncio.TimeoutError:
+            if log_func: log_func(f"⏰ Таймаут на {site or '—'}")
+            logger.warning("timeout: %s", site)
+            res = _stub(site)
+        except Exception as e:
+            if log_func: log_func(f"❌ Ошибка на {site or '—'}: {type(e).__name__}: {str(e)[:60]}")
+            logger.exception("enrich failed: %s", site)
+            res = _stub(site)
+        return _row(item, res)
+
+    async def sem_enrich(browser, item):
+        async with semaphore:
+            return await asyncio.wait_for(_do_enrich(browser, item), timeout=90)
+
+    # Фильтруем уже обработанные
+    remaining = []
+    for item in items_list:
+        site = (item.get('websites') or [None])[0]
+        if site and site in skip_urls:
+            continue
+        remaining.append(item)
+
+    if skip_urls and log_func:
+        log_func(f"⏩ Пропускаем {len(skip_urls)} уже обработанных, осталось {len(remaining)}")
+
+    count = 0
+    try:
+        async with async_playwright() as p:
+            for chunk_start in range(0, len(remaining), browser_chunk):
+                chunk = remaining[chunk_start:chunk_start + browser_chunk]
+                try:
+                    browser = await p.chromium.launch(headless=True, channel='chrome')
+                except Exception as e:
+                    msg = f"🔴 Браузер не запустился: {type(e).__name__}: {str(e)[:100]}"
+                    if log_func: log_func(msg)
+                    logger.exception("browser launch failed")
+                    for item in chunk:
+                        yield _row(item, _stub((item.get('websites') or [None])[0]))
+                    continue
+                try:
+                    tasks = [sem_enrich(browser, item) for item in chunk]
+                    for coro in asyncio.as_completed(tasks):
+                        try:
+                            result = await coro
+                            count += 1
+                            results_so_far.append(result)
+                            # Автосохранение каждые N результатов
+                            if count % checkpoint_every == 0:
+                                all_urls = skip_urls | {r.get("Сайт", "") for r in results_so_far if r.get("Сайт", "") != "—"}
+                                save_checkpoint(results_so_far, all_urls, search_params)
+                                if log_func: log_func(f"💾 Чекпоинт сохранён ({count} обработано)")
+                            yield result
+                        except Exception as e:
+                            if log_func: log_func(f"❌ Task error: {type(e).__name__}: {str(e)[:50]}")
+                            logger.exception("task error")
+                            continue
+                finally:
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
+    except Exception as e:
+        if log_func: log_func(f"🔴 Парсинг прерван: {type(e).__name__}: {str(e)[:80]}")
+        logger.exception("batch_process aborted")
+    finally:
+        # Сохраняем и при обрыве (СТОП/закрытие): иначе собранное теряется,
+        # а чекпоинт остаётся старым и вводит в заблуждение
+        try:
+            all_urls = skip_urls | {r.get("Сайт", "") for r in results_so_far if r.get("Сайт", "") != "—"}
+            save_checkpoint(results_so_far, all_urls, search_params)
+        except Exception as e:
+            logger.exception("final save failed")

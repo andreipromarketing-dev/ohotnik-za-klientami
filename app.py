@@ -36,12 +36,47 @@ def save_custom_apis(apis):
         f.write(encoded)
 
 def play_sound():
-    """Воспроизводит звуковое уведомление"""
+    """Звуковой сигнал окончания. Каскад из трёх способов: если молчит
+    системный звук Windows (схема 'Без звука', мьют python.exe в микшере),
+    добивает PC-спикер через Beep — он от схемы не зависит."""
     try:
-        import winsound
-        winsound.PlaySound("SystemNotification", winsound.SND_ALIAS | winsound.SND_NOWAIT)
+        print("[sound] сигнал окончания отправлен", flush=True)
     except Exception:
         pass
+    try:
+        import winsound
+        try:
+            winsound.PlaySound("SystemNotification",
+                               winsound.SND_ALIAS | winsound.SND_NOWAIT)
+        except Exception:
+            pass
+        try:
+            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+        except Exception:
+            pass
+        try:
+            time.sleep(0.15)
+            winsound.Beep(880, 250)
+            time.sleep(0.1)
+            winsound.Beep(1174, 350)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        print("\a", end="", flush=True)
+    except Exception:
+        pass
+
+def _is_online(timeout=4) -> bool:
+    """Быстрая проверка сети без DNS: TCP до 8.8.8.8:53.
+    Если сети нет — узнаём за секунды, а не виснем по таймаутам."""
+    import socket
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=timeout).close()
+        return True
+    except Exception:
+        return False
 
 st.set_page_config(page_title="ЮгСпецСети | Охотник за клиентами", page_icon="🎯", layout="wide")
 
@@ -86,7 +121,8 @@ section[data-testid="stSidebar"] .stMarkdown { color: #b0c4d4 !important; }
                 box-shadow var(--dur-fast) ease !important;
 }
 .stButton > button p,
-.stButton > button span { color: #0D1117 !important; }
+.stButton > button span,
+.stButton > button div { color: #0D1117 !important; }
 .stButton > button:hover {
     background: #d4f4e3 !important;
     box-shadow: 0 2px 8px rgba(232,249,238,0.25) !important;
@@ -105,6 +141,22 @@ section[data-testid="stSidebar"] .stMarkdown { color: #b0c4d4 !important; }
                 background var(--dur-normal) ease !important;
 }
 .stDownloadButton > button:active { transform: scale(0.97) !important; }
+.stDownloadButton > button p,
+.stDownloadButton > button span,
+.stDownloadButton > button div { color: #0D1117 !important; }
+
+/* Сайдбар: правило `* { color: #fff }` выше красит текст в мятных кнопках
+   в белый — перебиваем более специфичным селектором (тёмный шрифт) */
+section[data-testid="stSidebar"] .stButton > button,
+section[data-testid="stSidebar"] .stDownloadButton > button,
+section[data-testid="stSidebar"] [data-testid^="stBaseButton"] {
+    color: #0D1117 !important;
+}
+section[data-testid="stSidebar"] .stButton > button *,
+section[data-testid="stSidebar"] .stDownloadButton > button *,
+section[data-testid="stSidebar"] [data-testid^="stBaseButton"] * {
+    color: #0D1117 !important;
+}
 
 /* --- Inputs: smooth focus ring --- */
 input,
@@ -193,11 +245,21 @@ input:focus-visible, textarea:focus-visible {
 .stSlider [role="slider"] { background: #E8F9EE !important; }
 .stSlider .stMarkdown { color: #b0c4d4 !important; }
 
-/* --- Progress: smooth fill --- */
-.stProgress > div > div { background: #E8F9EE !important; }
+/* --- Progress: тёмный трек + светлая заливка.
+   Было: трек и заливка одного мятного цвета → сплошная белая полоса,
+   движение и проценты не видно. Больше так не делаем. --- */
+.stProgress > div > div {
+    background: #024d82 !important;
+    border-radius: 8px !important;
+}
 .stProgress > div > div > div {
     background: #E8F9EE !important;
+    border-radius: 8px !important;
     transition: width 300ms var(--ease-out) !important;
+}
+.stProgress p,
+.stProgress [data-testid="stWidgetLabel"] p {
+    color: #ffffff !important;
 }
 
 /* --- Spinner --- */
@@ -327,6 +389,8 @@ if "raw_items" not in st.session_state:
     st.session_state.raw_items = []
 if "stop_requested" not in st.session_state:
     st.session_state.stop_requested = False
+if "search_active" not in st.session_state:
+    st.session_state.search_active = False
 if "custom_apis" not in st.session_state:
     st.session_state.custom_apis = load_custom_apis()
 if "checkpoint_info" not in st.session_state:
@@ -367,6 +431,36 @@ def _render_live_log(placeholder, n=5):
     except Exception as e:
         _ui_error(f"live-log: {type(e).__name__}: {str(e)[:120]}")
 
+def _format_eta(seconds):
+    """Человекочитаемая оценка оставшегося времени"""
+    try:
+        seconds = max(0, int(seconds))
+    except Exception:
+        return "—"
+    if seconds < 60:
+        return f"{seconds} сек"
+    m, s = divmod(seconds, 60)
+    if m < 60:
+        return f"{m} мин {s:02d} сек"
+    h, m = divmod(m, 60)
+    return f"{h} ч {m:02d} мин"
+
+def _render_search_table(placeholder, results, tail=15):
+    """Лёгкая живая таблица поиска: последние найденные + счётчик. Без Excel."""
+    try:
+        with placeholder.container():
+            st.caption(f"🔎 Найдено компаний: {len(results)} (последние {min(len(results), tail)})")
+            if results:
+                rows = [{
+                    "Компания": x.get('name', '—'),
+                    "Сайт": (x.get('websites') or [None])[0] or "—",
+                    "Телефон": (x.get('phones') or ['—'])[0],
+                    "Город": x.get('city', '—'),
+                } for x in results[-tail:]]
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width='stretch')
+    except Exception as e:
+        _ui_error(f"search-table: {type(e).__name__}: {str(e)[:120]}")
+
 def _render_live_table(placeholder, export_ph, data):
     """Рисует таблицу + метрики + кнопку экспорта в плейсхолдер"""
     try:
@@ -394,42 +488,67 @@ def _render_live_table(placeholder, export_ph, data):
         _ui_error(f"live-table: {type(e).__name__}: {str(e)[:120]}")
 
 
-def _run_enrichment_flow():
-    """Запускает Шаг 2 (парсинг + AI) — вызывается из кнопки или авто-триггера"""
+def _run_enrichment_flow(items=None, base_results=None, base_urls=None):
+    """Запускает Шаг 2 (парсинг + AI) — вызывается из кнопки, авто-триггера
+    или Продолжить. items/base_* — докачка остатка после паузы."""
     st.session_state.stop_requested = False
-    total = len(st.session_state.raw_items)
-    log_message(f"🎯 Парсинг {total} компаний...")
+    full_items = st.session_state.raw_items
+    total = len(full_items)
+    base = list(base_results) if base_results else []
+    if base_urls:
+        base_sites = set(base_urls)
+    else:
+        # Сайты из уже собранного — чтобы файл чекпоинта не затирался
+        base_sites = {r.get("Сайт", "") for r in base if r.get("Сайт", "") != "—"}
+    if items is None:
+        items = full_items
+        log_message(f"🎯 Парсинг {total} компаний...")
+    else:
+        log_message(f"▶️ Докачка: {len(items)} осталось из {total}...")
     log_message(f"🤖 AI: {st.session_state.ai_provider} ({st.session_state.ai_model})")
 
-    progress_bar = st.progress(0)
-    stats_placeholder = st.empty()
-    live_log_placeholder = st.empty()
-    table_placeholder = st.empty()
-    export_placeholder = st.empty()
+    # Единый живой блок (создан в разделе 2): те же слоты, что у поиска
+    progress_bar = live_progress_ph
+    stats_placeholder = live_stats_ph
+    live_log_placeholder = live_log_ph
+    table_placeholder = live_table_ph
+    export_placeholder = live_export_ph
     st.session_state.enrichment_active = True
+    st.session_state.enrichment_started_at = time.monotonic()
+    flow_t0 = time.monotonic()
+
+    if not _is_online():
+        st.session_state.enrichment_active = False
+        st.error("❌ Нет соединения с интернетом. Проверь сеть и запусти парсинг заново.")
+        log_message("🔴 Нет сети — парсинг не запускаю")
+        play_sound()
+        return
 
     if sys.platform == 'win32':
         try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         except Exception: pass
 
-    processed_data = []
+    processed_data = list(base)
+    done_before = len(base)
     search_params = {
         "ai_provider": st.session_state.ai_provider,
         "ai_model": st.session_state.ai_model,
         "total": total,
-        "raw_items": st.session_state.raw_items,
+        "raw_items": full_items,
     }
 
     async def run_enrichment():
         count = 0
         try:
             async for result in enricher.batch_process(
-                st.session_state.raw_items,
+                items,
                 log_func=log_message,
                 use_ai=True,
                 ai_provider=st.session_state.ai_provider,
                 ai_model=st.session_state.ai_model,
-                search_params=search_params
+                search_params=search_params,
+                base_results=base,
+                base_urls=base_sites
             ):
                 if st.session_state.stop_requested:
                     log_message("🛑 Остановлено пользователем. Результаты сохранены.")
@@ -438,8 +557,15 @@ def _run_enrichment_flow():
                 count += 1
                 processed_data.append(result)
                 try:
-                    progress_bar.progress(count / total)
-                    stats_placeholder.info(f"📊 {count}/{total}")
+                    shown = done_before + count
+                    pct = shown / total if total else 1.0
+                    elapsed = time.monotonic() - flow_t0
+                    avg = elapsed / count if count else 0
+                    eta = avg * (total - shown)
+                    progress_bar.progress(min(pct, 1.0), text=f"{pct * 100:.0f}%")
+                    stats_placeholder.info(
+                        f"📊 {pct * 100:.0f}% • {shown}/{total} • ~осталось {_format_eta(eta)}"
+                    )
                     _render_live_log(live_log_placeholder)
                     if count % 5 == 0 and processed_data:
                         _render_live_table(table_placeholder, export_placeholder, processed_data)
@@ -459,9 +585,21 @@ def _run_enrichment_flow():
         log_message(f"✅ ГОТОВО: {count} лидов")
         st.session_state.enrichment_active = False
 
-    asyncio.run(run_enrichment())
+    crashed = None
+    try:
+        asyncio.run(run_enrichment())
+    except Exception as e:
+        crashed = e
+        # ВАЖНО: сбрасываем блокировку, иначе все будущие автозапуски
+        # будут молча пропускаться (баг «таблица не заполняется»)
+        st.session_state.enrichment_active = False
+        log_message(f"🔴 Парсинг упал: {type(e).__name__}: {str(e)[:120]}")
+        _ui_error(f"enrichment-crash: {type(e).__name__}: {str(e)[:120]}")
     play_sound()
-    st.success("✅ Парсинг + AI завершён!")
+    if crashed is None:
+        st.success("✅ Парсинг + AI завершён!")
+    else:
+        st.error(f"❌ Парсинг прерван ошибкой ({type(crashed).__name__}). Прогресс сохранён в чекпоинт.")
 
 
 @st.cache_resource
@@ -488,16 +626,27 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Режим работы")
-auto_mode = st.sidebar.toggle(
-    "🤖 Автоматический режим",
-    value=st.session_state.get('auto_mode', False),
-    help="Шаг 2 (парсинг+AI) запускается сразу после Шага 1 (поиска)"
+# Radio вместо toggle: у toggle белый рычаг на светлом фоне не видно,
+# а у radio выбранный вариант всегда мятный с тёмным текстом
+mode_label = st.sidebar.radio(
+    "Режим:",
+    ["⚪ Ручной", "🟢 Автомат"],
+    index=1 if st.session_state.get('auto_mode', False) else 0,
+    horizontal=True,
+    help="Автомат: Шаг 2 (парсинг+AI) запускается сразу после Шага 1 (поиска)"
 )
+auto_mode = (mode_label == "🟢 Автомат")
 st.session_state.auto_mode = auto_mode
 if auto_mode:
-    st.sidebar.success("🔄 Шаг 1 → Шаг 2 непрерывно")
+    st.sidebar.success("🟢 АВТОМАТ ВКЛ — Шаг 2 запустится сам")
 else:
-    st.sidebar.info("👆 Ручной запуск после проверки")
+    st.sidebar.info("⚪ Ручной режим — Шаг 2 запускай кнопкой")
+if st.sidebar.button("🔔 Проверить звук", help="Проиграть сигнал окончания. Если тихо — проверь колонки/громкость Windows."):
+    play_sound()
+    try:
+        st.toast("🔔 Проверочный сигнал отправлен")
+    except Exception:
+        pass
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔌 Статус API")
@@ -883,17 +1032,60 @@ st.header("2. Управление")
 if not config.SEARCHAPI_API_KEY:
     st.error("⚠️ **Внимание:** Не настроен SearchApi.io. Добавьте ключ в файл `.env`.")
 
-col_start, col_ai, col_stop = st.columns([1.5, 1.5, 1])
+# Единый живой блок: одни и те же слоты для обеих фаз (поиск и парсинг).
+# Созданы один раз в одном месте страницы → вторая таблица невозможна:
+# новая фаза переиспользует те же элементы, а не создаёт свои.
+live_progress_ph = st.empty()
+live_stats_ph = st.empty()
+live_log_ph = st.empty()
+live_table_ph = st.empty()
+live_export_ph = st.empty()
+
+if auto_mode:
+    # Автомат: одна кнопка СТАРТ вместо двух шагов (Шаг 2 подхватится сам)
+    col_start, col_stop = st.columns([3, 1])
+    col_ai = None
+else:
+    col_start, col_ai, col_stop = st.columns([1.5, 1.5, 1])
 
 has_step1 = bool(st.session_state.get('raw_items'))
 
 step1_type = "secondary" if has_step1 else "primary"
 step2_type = "primary" if has_step1 else "secondary"
 
-if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch'):
+# Состояние для умной кнопки: идёт ли прогон, есть ли недокачанный остаток
+_running = bool(st.session_state.get('enrichment_active') or st.session_state.get('search_active'))
+_raw = st.session_state.get('raw_items', [])
+_hunt = st.session_state.get('hunter_data', [])
+_done_names = {r.get("Компания", "") for r in _hunt}
+_rem_items = [it for it in _raw if it.get('name', '—') not in _done_names]
+_has_remainder = bool(_raw) and len(_hunt) < len(_raw) and not _running and bool(_rem_items)
+
+if auto_mode:
+    if _running:
+        # Прогон идёт: та же кнопка становится паузой
+        if col_start.button("⏸ ПАУЗА", type="primary", width='stretch'):
+            st.session_state.stop_requested = True
+            st.rerun()
+        step1_go = False
+    elif _has_remainder:
+        # Остановились на середине (пауза/стоп/обрыв): докачиваем остаток
+        step1_go = False
+        if col_start.button("▶ Продолжить", type="primary", width='stretch'):
+            _run_enrichment_flow(items=_rem_items,
+                                 base_results=list(st.session_state.get('hunter_data', [])))
+    else:
+        step1_go = col_start.button("▶ СТАРТ (поиск + парсинг)", type="primary", width='stretch')
+else:
+    step1_go = col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch')
+
+if step1_go:
     st.session_state.stop_requested = False
     st.session_state.raw_items = []
     st.session_state.hunter_data = []
+    # Свежий поиск гасит старую блокировку парсинга (могла залипнуть после падения)
+    st.session_state.enrichment_active = False
+    st.session_state.auto_enrich_pending = False
 
     # Определяем keywords, markers, города, лимит — из workflow или UI
     if st.session_state.workflow:
@@ -956,19 +1148,72 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
 
     seen_names = set()
     results = []
+    flow_t0 = time.monotonic()
+    st.session_state.search_active = True
 
-    log_placeholder = st.empty()
-    progress_bar = st.progress(0)
+    if not _is_online():
+        st.session_state.search_active = False
+        st.error("❌ Нет соединения с интернетом. Проверь сеть и нажми СТАРТ заново.")
+        log_message("🔴 Нет сети — поиск не запускаю")
+        play_sound()
+        st.stop()
+
+    # Единый живой блок (создан в разделе 2): те же слоты, что у парсинга
+    log_placeholder = live_log_ph
+    stats_line = live_stats_ph
+    progress_bar = live_progress_ph
+    search_table_placeholder = live_table_ph
 
     def live_log(msg):
         log_message(msg)
-        log_placeholder.info(msg)
+        try:
+            log_placeholder.info(msg)
+        except Exception as e:
+            _ui_error(f"search-log: {type(e).__name__}: {str(e)[:100]}")
 
     async def run_search():
         total_phase1 = len(target_cities) * len(final_keywords) * len(primary_markers)
         total_phase2 = len(target_cities) * len(final_keywords) * len(secondary_markers)
         total_queries = total_phase1 + total_phase2
         query_count = 0
+
+        def _refresh_status():
+            pct = min(query_count / total_queries, 1.0) if total_queries else 1.0
+            elapsed = time.monotonic() - flow_t0
+            avg = elapsed / query_count if query_count else 0
+            eta = avg * (total_queries - query_count) if avg else 0
+            try:
+                progress_bar.progress(pct, text=f"{pct * 100:.0f}%")
+                stats_line.info(
+                    f"📊 {pct * 100:.0f}% • запрос {query_count}/{total_queries} • "
+                    f"найдено {len(results)} • ~осталось {_format_eta(eta)}"
+                )
+            except Exception as e:
+                _ui_error(f"search-bar: {type(e).__name__}: {str(e)[:100]}")
+
+        async def _do_query(query):
+            nonlocal query_count
+            query_count += 1
+            live_log(f"📡 [{query_count}/{total_queries}] {query}")
+            _refresh_status()
+            try:
+                batch = await search_providers.fetch_companies(
+                    query, limit_val, log_func=live_log, exclude_keywords=exclude_keywords
+                )
+            except Exception as e:
+                log_message(f"🔴 Запрос упал: {str(e)[:80]}")
+                batch = []
+            for item in batch:
+                name = item.get('name', '').strip().lower()
+                url = (item.get('websites') or [''])[0]
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    item["city"] = city_label
+                    results.append(item)
+            _refresh_status()
+            if query_count % 10 == 0:
+                _render_search_table(search_table_placeholder, results)
+            return len(results) >= limit_val
 
         for city in target_cities:
             if st.session_state.stop_requested: break
@@ -978,6 +1223,7 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
             else:
                 city_label = city
                 live_log(f"🏙️ Город: {city}...")
+            _refresh_status()
 
             # Фаза 1: Primary
             for keyword in final_keywords:
@@ -988,27 +1234,9 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
                         query = f"{keyword} {marker}".strip()
                     else:
                         query = f"{keyword} {city} {marker}".strip()
-                    query_count += 1
-                    live_log(f"📡 [{query_count}/{total_queries}] {query}")
-                    progress_bar.progress(min(query_count / total_queries, 1.0))
-
-                    batch = await search_providers.fetch_companies(
-                        query, limit_val, log_func=live_log, exclude_keywords=exclude_keywords
-                    )
-                    for item in batch:
-                        name = item.get('name', '').strip().lower()
-                        url = (item.get('websites') or [''])[0]
-                        if name and name not in seen_names:
-                            seen_names.add(name)
-                            item["city"] = city_label
-                            results.append(item)
-
-                    if len(results) >= limit_val:
-                        break
-                if len(results) >= limit_val:
-                    break
-            if len(results) >= limit_val:
-                break
+                    if await _do_query(query): break
+                if len(results) >= limit_val: break
+            if len(results) >= limit_val: break
 
             # Фаза 2: Secondary (если мало)
             if len(results) < limit_val:
@@ -1021,32 +1249,22 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
                             query = f"{keyword} {marker}".strip()
                         else:
                             query = f"{keyword} {city} {marker}".strip()
-                        query_count += 1
-                        live_log(f"📡 [{query_count}/{total_queries}] {query}")
-                        progress_bar.progress(min(query_count / total_queries, 1.0))
+                        if await _do_query(query): break
+                    if len(results) >= limit_val: break
+                if len(results) >= limit_val: break
 
-                        batch = await search_providers.fetch_companies(
-                            query, limit_val, log_func=live_log, exclude_keywords=exclude_keywords
-                        )
-                        for item in batch:
-                            name = item.get('name', '').strip().lower()
-                            url = (item.get('websites') or [''])[0]
-                            if name and name not in seen_names:
-                                seen_names.add(name)
-                                item["city"] = city_label
-                                results.append(item)
-                        if len(results) >= limit_val:
-                            break
-                    if len(results) >= limit_val:
-                        break
-
-                if len(results) >= limit_val:
-                    break
-
-        progress_bar.progress(1.0)
+        _refresh_status()
+        _render_search_table(search_table_placeholder, results)
 
     with st.spinner("🔍 Идёт поиск компаний..."):
         asyncio.run(run_search())
+
+    st.session_state.search_active = False
+    play_sound()
+    try:
+        st.toast("✅ Поиск завершён!")
+    except Exception:
+        pass
 
     st.session_state.raw_items = results[:limit_val]
     st.session_state.hunter_data = [{
@@ -1072,11 +1290,22 @@ if col_start.button("🚀 ШАГ 1. Поиск", type=step1_type, width='stretch
 
 # Авто-триггер: Шаг 2 запускается сразу после Шага 1
 if st.session_state.get('auto_enrich_pending') and has_step1:
-    if not st.session_state.get('enrichment_active'):
+    if st.session_state.get('enrichment_active'):
+        _started = st.session_state.get('enrichment_started_at', 0)
+        if time.monotonic() - _started > 3 * 3600:
+            log_message("🔓 Сбрасываю зависшую блокировку парсинга (>3 ч) и запускаю заново")
+            st.session_state.enrichment_active = False
+            st.session_state.auto_enrich_pending = False
+            _run_enrichment_flow()
+        else:
+            st.sidebar.warning("⏳ Автозапуск Шага 2 пропущен: парсинг помечен активным. "
+                               "Если он завис — нажми ШАГ 1 заново или перезапусти программу.")
+            st.session_state.auto_enrich_pending = False
+    else:
         st.session_state.auto_enrich_pending = False
         _run_enrichment_flow()
 
-if col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled=not st.session_state.raw_items, width='stretch'):
+if col_ai is not None and col_ai.button("🔍 ШАГ 2. Парсинг + AI", type=step2_type, disabled=not st.session_state.raw_items, width='stretch'):
     _run_enrichment_flow()
 
 # Кнопки "Продолжить" / "Удалить" предыдущую сессию
@@ -1105,12 +1334,15 @@ if st.session_state.get('checkpoint_info'):
                 log_message(f"▶️ Продолжаем: {total} компаний осталось")
                 log_message(f"🤖 AI: {st.session_state.ai_provider} ({st.session_state.ai_model})")
                 
-                progress_bar = st.progress(0)
-                stats_placeholder = st.empty()
-                live_log_placeholder = st.empty()
-                table_placeholder = st.empty()
-                export_placeholder = st.empty()
+                # Единый живой блок (создан в разделе 2): те же слоты, что у поиска
+                progress_bar = live_progress_ph
+                stats_placeholder = live_stats_ph
+                live_log_placeholder = live_log_ph
+                table_placeholder = live_table_ph
+                export_placeholder = live_export_ph
                 st.session_state.enrichment_active = True
+                st.session_state.enrichment_started_at = time.monotonic()
+                flow_t0 = time.monotonic()
                 
                 if sys.platform == 'win32':
                     try: asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -1142,8 +1374,14 @@ if st.session_state.get('checkpoint_info'):
                             count += 1
                             processed_data.append(result)
                             try:
-                                progress_bar.progress(count / total)
-                                stats_placeholder.info(f"📊 {count}/{total}")
+                                pct = count / total if total else 1.0
+                                elapsed = time.monotonic() - flow_t0
+                                avg = elapsed / count if count else 0
+                                eta = avg * (total - count)
+                                progress_bar.progress(min(pct, 1.0), text=f"{pct * 100:.0f}%")
+                                stats_placeholder.info(
+                                    f"📊 {pct * 100:.0f}% • {count}/{total} • ~осталось {_format_eta(eta)}"
+                                )
                                 _render_live_log(live_log_placeholder)
                                 if count % 5 == 0 and processed_data:
                                     _render_live_table(table_placeholder, export_placeholder, processed_data)
@@ -1162,9 +1400,19 @@ if st.session_state.get('checkpoint_info'):
                     log_message(f"✅ ГОТОВО: {count} новых лидов (всего {len(cp_results) + len(processed_data)})")
                     st.session_state.enrichment_active = False
                 
-                asyncio.run(run_resume())
+                crashed = None
+                try:
+                    asyncio.run(run_resume())
+                except Exception as e:
+                    crashed = e
+                    st.session_state.enrichment_active = False
+                    log_message(f"🔴 Продолжение упало: {type(e).__name__}: {str(e)[:120]}")
+                    _ui_error(f"resume-crash: {type(e).__name__}: {str(e)[:120]}")
                 play_sound()
-                st.success("✅ Продолжение завершено!")
+                if crashed is None:
+                    st.success("✅ Продолжение завершено!")
+                else:
+                    st.error(f"❌ Продолжение прервано ошибкой ({type(crashed).__name__}). Прогресс сохранён.")
             
             # Удаляем чекпоинт после успешного возобновления
             enricher.delete_checkpoint()
@@ -1182,6 +1430,15 @@ if col_stop.button("🛑 СТОП", width='stretch'):
 
 # Таблица и логи
 st.header("3. Результаты")
+n_found = len(st.session_state.get('raw_items', []))
+n_enriched = len(st.session_state.get('hunter_data', []))
+if n_found and not n_enriched:
+    _hint = ("нажми «▶ СТАРТ» — Шаг 2 подхватится сам." if st.session_state.get('auto_mode')
+             else "нажми «🔍 ШАГ 2. Парсинг + AI».")
+    st.warning(f"🔍 Найдено компаний: {n_found}, но парсинг ещё не запускался — "
+               f"телефоны, почты и соцсети появятся только после него. {_hint}")
+elif n_found:
+    st.caption(f"🔍 Найдено: {n_found} • Обогащено: {n_enriched}")
 if st.session_state.hunter_data:
     df = pd.DataFrame(st.session_state.hunter_data)
     st.dataframe(df, hide_index=True, width='stretch')

@@ -129,6 +129,34 @@ EXTRACT_CONTACTS_PROMPT = """Извлеки ВСЕ контактные данн
 - "Директор: Иванова М.И." → people: [{"name": "Иванова", "position": "директор", "type": "director"}]"""
 
 
+def _salvage_json(content: str):
+    """Достаёт JSON из ответа модели.
+
+    Модели семейства GPT-OSS любят отвечать прозой вокруг JSON
+    ("Вот контакты: {...}") — прямой json.loads тогда падает и весь
+    AI-результат сайта теряется. Пробуем по очереди: чистый JSON,
+    ``` блоки, затем первый {...} отрезок через regex.
+    Возвращает dict/list или None.
+    """
+    import re
+    text = (content or "").strip()
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0]
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0]
+    try:
+        return json.loads(text.strip())
+    except (json.JSONDecodeError, ValueError):
+        pass
+    m = re.search(r"\{.*\}", text.strip(), re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
 async def call_groq(system_prompt: str, user_message: str, model: str = DEFAULT_MODEL) -> dict:
     """Запрос к Groq API с авто-failover между ключами"""
 
@@ -163,20 +191,18 @@ async def call_groq(system_prompt: str, user_message: str, model: str = DEFAULT_
                     f"{GROQ_URL}/chat/completions",
                     json=payload,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=60)
+                    # 25с: извлечение контактов — маленькая задача; висеть
+                    # по 60с × 2 ключа = вылет сайта по общему таймауту
+                    timeout=aiohttp.ClientTimeout(total=25)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        try:
-                            if "```json" in content:
-                                content = content.split("```json")[1].split("```")[0]
-                            elif "```" in content:
-                                content = content.split("```")[1].split("```")[0]
+                        parsed = _salvage_json(content)
+                        if parsed is not None:
                             _log(f"OK (ключ ...{key[-8:]})")
-                            return json.loads(content.strip())
-                        except json.JSONDecodeError:
-                            return {"error": "JSON parse failed", "raw": content[:500]}
+                            return parsed
+                        return {"error": "JSON parse failed", "raw": content[:500]}
 
                     error_text = await resp.text()
                     last_error = f"API error {resp.status}: {error_text[:200]}"

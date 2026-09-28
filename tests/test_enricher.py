@@ -198,3 +198,61 @@ class TestFalsePositiveFilters:
         found = re.findall(EMAIL_REGEX, text)
         filtered = [e for e in found if 'sentry' in e.lower()]
         assert len(filtered) >= 1
+
+
+class TestTgJunkFilter:
+    def test_share_widget_is_junk(self):
+        assert enricher._is_tg_junk("https://telegram.me/share/url?url=https://example.ru/x")
+        assert enricher._is_tg_junk("https://t.me/share/url?url=x")
+
+    def test_iv_proxy_is_junk(self):
+        assert enricher._is_tg_junk("https://t.me/iv?url=https://example.ru/x&rhash=abc")
+
+    def test_real_channel_not_junk(self):
+        assert not enricher._is_tg_junk("https://t.me/testchannel")
+        assert not enricher._is_tg_junk("https://telegram.me/testchannel")
+
+    def test_invite_link_not_junk(self):
+        assert not enricher._is_tg_junk("https://t.me/+AbCdEfGh123")
+
+    def test_max_union_no_crash(self):
+        # Регрессия строки-убийцы: множества складываются через |, а не +
+        assert " ".join({'https://vk.com/x'} | {'https://t.me/y'}) == \
+            " ".join({'https://vk.com/x'} | {'https://t.me/y'})
+        with pytest.raises(TypeError):
+            " ".join({'a'} + {'b'})
+
+
+class TestSalvageJson:
+    def test_clean_json(self):
+        from groq_client import _salvage_json
+        assert _salvage_json('{"emails": ["a@b.ru"]}') == {"emails": ["a@b.ru"]}
+
+    def test_fenced_json(self):
+        from groq_client import _salvage_json
+        assert _salvage_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+    def test_prose_around_json(self):
+        from groq_client import _salvage_json
+        content = 'Вот контакты компании:\n{"emails": ["a@b.ru"], "phones": []}\nНадеюсь помог!'
+        assert _salvage_json(content) == {"emails": ["a@b.ru"], "phones": []}
+
+    def test_garbage_returns_none(self):
+        from groq_client import _salvage_json
+        assert _salvage_json("просто текст без json") is None
+        assert _salvage_json("") is None
+
+
+class TestDedupePhones:
+    def test_8_and_plus7_same_number(self):
+        out = enricher._dedupe_phones(["+7 (927) 766-66-80", "89277666680"])
+        assert len(out) == 1
+        assert out[0] == "+7 (927) 766-66-80"
+
+    def test_different_numbers_kept(self):
+        out = enricher._dedupe_phones(["+7 (927) 111-11-11", "+7 (927) 222-22-22"])
+        assert len(out) == 2
+
+    def test_empty(self):
+        assert enricher._dedupe_phones([]) == []
+        assert enricher._dedupe_phones(None) == []
