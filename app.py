@@ -391,6 +391,8 @@ if "stop_requested" not in st.session_state:
     st.session_state.stop_requested = False
 if "search_active" not in st.session_state:
     st.session_state.search_active = False
+if "run_complete" not in st.session_state:
+    st.session_state.run_complete = False
 if "custom_apis" not in st.session_state:
     st.session_state.custom_apis = load_custom_apis()
 if "checkpoint_info" not in st.session_state:
@@ -493,6 +495,7 @@ def _run_enrichment_flow(items=None, base_results=None, base_urls=None):
     или Продолжить. items/base_* — докачка остатка после паузы."""
     st.session_state.stop_requested = False
     full_items = st.session_state.raw_items
+    st.session_state.run_complete = False
     total = len(full_items)
     base = list(base_results) if base_results else []
     if base_urls:
@@ -597,6 +600,8 @@ def _run_enrichment_flow(items=None, base_results=None, base_urls=None):
         _ui_error(f"enrichment-crash: {type(e).__name__}: {str(e)[:120]}")
     play_sound()
     if crashed is None:
+        if not st.session_state.stop_requested:
+            st.session_state.run_complete = True
         st.success("✅ Парсинг + AI завершён!")
     else:
         st.error(f"❌ Парсинг прерван ошибкой ({type(crashed).__name__}). Прогресс сохранён в чекпоинт.")
@@ -1068,8 +1073,9 @@ if auto_mode:
             st.session_state.stop_requested = True
             st.rerun()
         step1_go = False
-    elif _has_remainder:
-        # Остановились на середине (пауза/стоп/обрыв): докачиваем остаток
+    elif _has_remainder and not st.session_state.get('run_complete'):
+        # Остановились на середине (пауза/стоп/обрыв): докачиваем остаток.
+        # После чистого финиша флаг run_complete ведёт на свежий СТАРТ.
         step1_go = False
         if col_start.button("▶ Продолжить", type="primary", width='stretch'):
             _run_enrichment_flow(items=_rem_items,
@@ -1086,6 +1092,7 @@ if step1_go:
     # Свежий поиск гасит старую блокировку парсинга (могла залипнуть после падения)
     st.session_state.enrichment_active = False
     st.session_state.auto_enrich_pending = False
+    st.session_state.run_complete = False
 
     # Определяем keywords, markers, города, лимит — из workflow или UI
     if st.session_state.workflow:
@@ -1410,6 +1417,8 @@ if st.session_state.get('checkpoint_info'):
                     _ui_error(f"resume-crash: {type(e).__name__}: {str(e)[:120]}")
                 play_sound()
                 if crashed is None:
+                    if not st.session_state.stop_requested:
+                        st.session_state.run_complete = True
                     st.success("✅ Продолжение завершено!")
                 else:
                     st.error(f"❌ Продолжение прервано ошибкой ({type(crashed).__name__}). Прогресс сохранён.")
